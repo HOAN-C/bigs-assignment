@@ -46,6 +46,7 @@ export const boardApi = {
   getBoards: async (
     params: PaginationParams,
   ): Promise<PaginatedResponse<BoardListItem>> => {
+    console.log({ params });
     const response = await apiClient.get<PaginatedResponse<BoardListItem>>(
       "/boards",
       { params },

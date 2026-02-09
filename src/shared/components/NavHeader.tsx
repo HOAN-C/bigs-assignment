@@ -7,7 +7,7 @@
  */
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/features/auth/context/AuthContext';
+import { useAuth } from '@/features/auth/context/useAuth';
 import { useThemeMode } from '../styles';
 import Button from './Button';
 
@@ -76,7 +76,7 @@ export default function NavHeader() {
 
   const handleSignOut = () => {
     signOut();
-    navigate('/boards');
+    // /login 리다이렉트는 AuthProvider가 처리
   };
 
   return (

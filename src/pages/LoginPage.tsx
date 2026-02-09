@@ -12,7 +12,7 @@ import { useState, type FormEvent } from 'react';
 import styled from 'styled-components';
 import { useNavigate, Link } from 'react-router-dom';
 import { useSignIn } from '@/features/auth/hooks/useAuth';
-import { useAuth } from '@/features/auth/context/AuthContext';
+import { useAuth } from '@/features/auth/context/useAuth';
 import { Button, Input } from '@/shared/components';
 
 const Page = styled.div`

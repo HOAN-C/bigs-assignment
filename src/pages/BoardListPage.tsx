@@ -7,17 +7,98 @@
  *
  * 반응형 padding: 1440(120), 1024(60), 768(24), 375(16)
  */
-import { useState } from 'react';
-import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
-import { useBoards, useBoardCategories } from '@/features/board/hooks/useBoards';
+import { useState } from "react";
+import styled from "styled-components";
+import { useNavigate } from "react-router-dom";
+import { useBoards } from "@/features/board/hooks/useBoards";
 import {
   NavHeader,
   MobileNavHeader,
-  CategoryTabs,
   CategoryBadge,
   Pagination,
-} from '@/shared/components';
+} from "@/shared/components";
+
+export default function BoardListPage() {
+  const navigate = useNavigate();
+  const [page, setPage] = useState(0);
+
+  const { data: boardsData, isLoading } = useBoards({
+    page,
+    size: 10,
+  });
+
+  const boards = boardsData?.content ?? [];
+  const totalPages = boardsData?.totalPages ?? 0;
+  const totalElements = boardsData?.totalElements ?? 0;
+
+  return (
+    <Page>
+      <NavHeader />
+      <MobileNavHeader />
+      <Content>
+        <PageHeader>
+          <Title>Board</Title>
+          <Meta>{totalElements} posts</Meta>
+        </PageHeader>
+
+        {isLoading ? (
+          <EmptyState>Loading...</EmptyState>
+        ) : boards.length === 0 ? (
+          <EmptyState>No posts found.</EmptyState>
+        ) : (
+          <>
+            {/* 데스크톱 테이블 */}
+            <BoardTable>
+              <TableHeader>
+                <HeaderCell $width="80px">Category</HeaderCell>
+                <HeaderCell>Title</HeaderCell>
+                <HeaderCell $width="100px" $align="right">
+                  Date
+                </HeaderCell>
+              </TableHeader>
+              {boards.map((board) => (
+                <TableRow
+                  key={board.id}
+                  onClick={() => navigate(`/boards/${board.id}`)}
+                >
+                  <RowBadge>
+                    <CategoryBadge category={board.category} />
+                  </RowBadge>
+                  <RowTitle>{board.title}</RowTitle>
+                  <RowDate>{board.createdAt.split("T")[0]}</RowDate>
+                </TableRow>
+              ))}
+            </BoardTable>
+
+            {/* 모바일 카드 */}
+            <MobileList>
+              {boards.map((board) => (
+                <MobileCard
+                  key={board.id}
+                  onClick={() => navigate(`/boards/${board.id}`)}
+                >
+                  <MobileCardTop>
+                    <CategoryBadge category={board.category} />
+                    <MobileDate>{board.createdAt.split("T")[0]}</MobileDate>
+                  </MobileCardTop>
+                  <MobileCardTitle>{board.title}</MobileCardTitle>
+                </MobileCard>
+              ))}
+            </MobileList>
+          </>
+        )}
+
+        <PaginationWrap>
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        </PaginationWrap>
+      </Content>
+    </Page>
+  );
+}
 
 const Page = styled.div`
   min-height: 100vh;
@@ -102,7 +183,7 @@ const HeaderCell = styled.span<{ $width?: string; $align?: string }>`
   color: ${({ theme }) => theme.colors.textTertiary};
   ${({ $width }) => $width && `width: ${$width}; flex-shrink: 0;`}
   ${({ $align }) => $align && `text-align: ${$align};`}
-  ${({ $width }) => !$width && 'flex: 1;'}
+  ${({ $width }) => !$width && "flex: 1;"}
 `;
 
 const TableRow = styled.div`
@@ -113,8 +194,12 @@ const TableRow = styled.div`
   cursor: pointer;
   transition: background 0.1s ease;
 
-  &:last-child { border-bottom: none; }
-  &:hover { background: ${({ theme }) => theme.colors.bgMuted}; }
+  &:last-child {
+    border-bottom: none;
+  }
+  &:hover {
+    background: ${({ theme }) => theme.colors.bgMuted};
+  }
 `;
 
 const RowBadge = styled.div`
@@ -197,87 +282,3 @@ const EmptyState = styled.div`
   color: ${({ theme }) => theme.colors.textTertiary};
   font-size: 14px;
 `;
-
-export default function BoardListPage() {
-  const navigate = useNavigate();
-  const [page, setPage] = useState(0);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
-  const { data: categories = {} } = useBoardCategories();
-  const { data: boardsData, isLoading } = useBoards({
-    page,
-    size: 10,
-    ...(selectedCategory ? { category: selectedCategory } : {}),
-  });
-
-  const handleCategoryChange = (cat: string | null) => {
-    setSelectedCategory(cat);
-    setPage(0);
-  };
-
-  const boards = boardsData?.content ?? [];
-  const totalPages = boardsData?.totalPages ?? 0;
-  const totalElements = boardsData?.totalElements ?? 0;
-
-  return (
-    <Page>
-      <NavHeader />
-      <MobileNavHeader />
-      <Content>
-        <PageHeader>
-          <Title>Board</Title>
-          <Meta>{totalElements} posts</Meta>
-        </PageHeader>
-
-        <CategoryTabs
-          categories={categories}
-          selected={selectedCategory}
-          onSelect={handleCategoryChange}
-        />
-
-        {isLoading ? (
-          <EmptyState>Loading...</EmptyState>
-        ) : boards.length === 0 ? (
-          <EmptyState>No posts found.</EmptyState>
-        ) : (
-          <>
-            {/* 데스크톱 테이블 */}
-            <BoardTable>
-              <TableHeader>
-                <HeaderCell $width="80px">Category</HeaderCell>
-                <HeaderCell>Title</HeaderCell>
-                <HeaderCell $width="100px" $align="right">Date</HeaderCell>
-              </TableHeader>
-              {boards.map((board) => (
-                <TableRow key={board.id} onClick={() => navigate(`/boards/${board.id}`)}>
-                  <RowBadge>
-                    <CategoryBadge category={board.category} />
-                  </RowBadge>
-                  <RowTitle>{board.title}</RowTitle>
-                  <RowDate>{board.createdAt.split('T')[0]}</RowDate>
-                </TableRow>
-              ))}
-            </BoardTable>
-
-            {/* 모바일 카드 */}
-            <MobileList>
-              {boards.map((board) => (
-                <MobileCard key={board.id} onClick={() => navigate(`/boards/${board.id}`)}>
-                  <MobileCardTop>
-                    <CategoryBadge category={board.category} />
-                    <MobileDate>{board.createdAt.split('T')[0]}</MobileDate>
-                  </MobileCardTop>
-                  <MobileCardTitle>{board.title}</MobileCardTitle>
-                </MobileCard>
-              ))}
-            </MobileList>
-          </>
-        )}
-
-        <PaginationWrap>
-          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-        </PaginationWrap>
-      </Content>
-    </Page>
-  );
-}

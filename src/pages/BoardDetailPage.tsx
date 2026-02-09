@@ -9,7 +9,7 @@
 import styled from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBoard, useDeleteBoard } from '@/features/board/hooks/useBoards';
-import { useAuth } from '@/features/auth/context/AuthContext';
+import { useAuth } from '@/features/auth/context/useAuth';
 import {
   NavHeader,
   MobileNavHeader,

@@ -5,7 +5,7 @@
  * GuestRoute: 인증 상태면 /boards로 리다이렉트 (로그인/회원가입 페이지용)
  */
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '@/features/auth/context/AuthContext';
+import { useAuth } from '@/features/auth/context/useAuth';
 import type { ReactNode } from 'react';
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {

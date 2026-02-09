@@ -3,9 +3,10 @@
  *
  * 이 파일 하나로 모든 API 요청의 인증 처리가 자동화된다.
  * - 요청 인터셉터: 매 요청마다 accessToken을 Authorization 헤더에 자동 부착
- * - 응답 인터셉터: 401(인증 만료) 응답 시 토큰을 자동 갱신하고 실패한 요청을 재시도
+ *   → accessToken이 없지만 refreshToken이 있으면 선제적으로 갱신한다 (새로고침 직후 시나리오)
+ * - 응답 인터셉터: 401/403 응답 시 토큰을 자동 갱신하고 실패한 요청을 재시도
  *
- * 토큰 갱신 중 다른 요청도 401을 받을 수 있기 때문에,
+ * 토큰 갱신 중 다른 요청도 401/403을 받을 수 있기 때문에,
  * 갱신은 한 번만 실행하고 나머지 요청은 큐에 대기시킨 뒤 일괄 재시도하는 구조다.
  */
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
@@ -23,12 +24,14 @@ export const apiClient = axios.create({
 // 현재 토큰 갱신이 진행 중인지 추적하는 플래그
 let isRefreshing = false;
 
-// 토큰 갱신 중 401을 받은 요청들이 대기하는 큐
-// 갱신이 완료되면 새 토큰으로 resolve되어 각 요청이 재시도된다.
+// 토큰 갱신 중 대기하는 요청 큐
 let failedQueue: Array<{
   resolve: (token: string) => void;
   reject: (error: Error) => void;
 }> = [];
+
+// 진행 중인 선제적 갱신의 Promise (중복 갱신 방지)
+let pendingRefreshPromise: Promise<string> | null = null;
 
 // 큐에 쌓인 대기 요청들을 한번에 처리 (성공 시 새 토큰 전달, 실패 시 에러 전파)
 const processQueue = (error: Error | null, token: string | null = null) => {
@@ -43,13 +46,52 @@ const processQueue = (error: Error | null, token: string | null = null) => {
 };
 
 /**
+ * refreshToken으로 accessToken을 갱신한다.
+ * 이미 갱신 중이면 기존 Promise를 반환하여 중복 호출을 방지한다.
+ */
+const refreshAccessToken = (): Promise<string> => {
+  if (pendingRefreshPromise) return pendingRefreshPromise;
+
+  const refreshToken = tokenStorage.getRefreshToken();
+  if (!refreshToken) {
+    return Promise.reject(new Error("No refresh token"));
+  }
+
+  // apiClient가 아닌 기본 axios를 사용 (인터셉터 무한루프 방지)
+  pendingRefreshPromise = axios
+    .post(`${API_BASE_URL}/auth/refresh`, { refreshToken })
+    .then((response) => {
+      const { accessToken, refreshToken: newRefreshToken } = response.data;
+      tokenStorage.setTokens(accessToken, newRefreshToken);
+      return accessToken;
+    })
+    .finally(() => {
+      pendingRefreshPromise = null;
+    });
+
+  return pendingRefreshPromise;
+};
+
+/**
  * [요청 인터셉터]
  * 모든 요청 직전에 실행되어 accessToken을 헤더에 붙여준다.
- * 이 덕분에 각 API 호출 코드에서 토큰을 직접 다룰 필요가 없다.
+ *
+ * 새로고침 직후처럼 accessToken은 없지만 refreshToken(쿠키)은 있는 경우,
+ * API 호출 전에 선제적으로 토큰을 갱신하여 401/403을 미연에 방지한다.
  */
 apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const accessToken = tokenStorage.getAccessToken();
+  async (config: InternalAxiosRequestConfig) => {
+    let accessToken = tokenStorage.getAccessToken();
+
+    // accessToken이 없지만 refreshToken이 있으면 선제적으로 갱신 (새로고침 직후)
+    if (!accessToken && tokenStorage.getRefreshToken()) {
+      try {
+        accessToken = await refreshAccessToken();
+      } catch {
+        // 갱신 실패 시 토큰 없이 요청 진행 (서버가 401/403으로 응답하면 응답 인터셉터가 처리)
+      }
+    }
+
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
@@ -60,8 +102,11 @@ apiClient.interceptors.request.use(
 
 /**
  * [응답 인터셉터]
- * 401 응답을 감지하면 refreshToken으로 토큰을 갱신하고, 실패했던 요청을 새 토큰으로 재시도한다.
- * 동시 401 처리와 무한 루프 방지 로직이 포함되어 있다.
+ * 401 또는 403 응답을 감지하면 refreshToken으로 토큰을 갱신하고,
+ * 실패했던 요청을 새 토큰으로 재시도한다.
+ *
+ * Spring Security는 인증 누락/만료 시 401 대신 403을 반환하는 경우가 있어
+ * 두 상태 코드 모두 처리한다.
  */
 apiClient.interceptors.response.use(
   (response) => response,
@@ -70,8 +115,10 @@ apiClient.interceptors.response.use(
       _retry?: boolean; // 이 요청이 이미 재시도된 것인지 표시
     };
 
-    // 401이 아니거나 이미 재시도한 요청이면 더 이상 처리하지 않음
-    if (error.response?.status !== 401 || originalRequest._retry) {
+    const status = error.response?.status;
+
+    // 401/403이 아니거나 이미 재시도한 요청이면 더 이상 처리하지 않음
+    if ((status !== 401 && status !== 403) || originalRequest._retry) {
       return Promise.reject(error);
     }
 
@@ -85,7 +132,7 @@ apiClient.interceptors.response.use(
       });
     }
 
-    // 이 요청이 첫 번째 401 → 토큰 갱신 시작
+    // 이 요청이 첫 번째 401/403 → 토큰 갱신 시작
     originalRequest._retry = true; // 무한 루프 방지: 재시도 시 이 블록을 다시 타지 않도록
     isRefreshing = true;
 
@@ -98,15 +145,7 @@ apiClient.interceptors.response.use(
     }
 
     try {
-      // apiClient가 아닌 기본 axios를 사용 (apiClient를 쓰면 이 인터셉터가 다시 실행되어 무한루프 발생)
-      const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-        refreshToken,
-      });
-
-      const { accessToken, refreshToken: newRefreshToken } = response.data;
-
-      // 새 토큰 저장 + 큐에서 대기 중이던 요청들도 새 토큰으로 재시도
-      tokenStorage.setTokens(accessToken, newRefreshToken);
+      const accessToken = await refreshAccessToken();
       processQueue(null, accessToken);
 
       // 원래 실패했던 요청을 새 토큰으로 재시도

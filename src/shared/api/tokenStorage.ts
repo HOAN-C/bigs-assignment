@@ -50,6 +50,7 @@ export const tokenStorage = {
     accessTokenInMemory = null;
     Cookies.remove(REFRESH_TOKEN_KEY);
     tokenStorage.onAuthChange?.(false);
+    
   },
 
   /** 로그인 여부 확인 (refreshToken 쿠키가 존재하면 로그인 상태) */
