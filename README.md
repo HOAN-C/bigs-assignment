@@ -1,74 +1,54 @@
 # Bigs Board
 
-React + TypeScript 기반 게시판 웹 애플리케이션.
-JWT 인증, 게시글 CRUD, 다크모드, 반응형 레이아웃을 지원한다.
-
 ---
 
 ## 목차
 
-1. [기술 스택](#기술-스택)
-2. [시작하기](#시작하기)
+1. [기술 스택과 선택 이유](#기술-스택과-선택-이유)
+2. [실행 방법](#실행-방법)
 3. [폴더 구조](#폴더-구조)
-4. [아키텍처 개요](#아키텍처-개요)
-5. [라우팅 구조](#라우팅-구조)
-6. [인증 시스템](#인증-시스템)
-7. [API 구조](#api-구조)
-8. [상태 관리](#상태-관리)
-9. [게시판 기능](#게시판-기능)
-10. [컴포넌트 설계](#컴포넌트-설계)
-11. [스타일링 & 테마](#스타일링--테마)
-12. [새로운 기능 추가 가이드](#새로운-기능-추가-가이드)
-13. [주의사항](#주의사항)
+4. [전체 아키텍처](#전체-아키텍처)
+5. [인증 시스템](#인증-시스템)
+6. [API 통신 구조](#api-통신-구조)
+7. [상태 관리 구조](#상태-관리-구조)
+8. [라우팅과 접근 제어](#라우팅과-접근-제어)
+9. [설계 결정과 트레이드오프](#설계-결정과-트레이드오프)
 
 ---
 
-## 기술 스택
+## 기술 스택과 선택 이유
 
-| 분류      | 기술                  | 역할                      |
-| --------- | --------------------- | ------------------------- |
-| UI        | React 19              | 컴포넌트 기반 UI          |
-| 언어      | TypeScript (strict)   | 정적 타입 검사            |
-| 빌드      | Vite 7                | 개발 서버 & 번들링        |
-| 스타일    | styled-components     | CSS-in-JS                 |
-| HTTP      | axios                 | API 통신                  |
-| 서버 상태 | @tanstack/react-query | 캐싱, 자동 갱신, mutation |
-| 상태 관리 | zustand               | 클라이언트 상태 (인증, 테마) |
-| 라우팅    | react-router-dom      | 클라이언트 사이드 라우팅  |
-| 쿠키      | js-cookie             | refreshToken 쿠키 관리    |
-| JWT       | jwt-decode            | accessToken 디코딩        |
+| 분류            | 기술                  | 선택 이유                                                        |
+| --------------- | --------------------- | ---------------------------------------------------------------- |
+| UI              | React 19              | 컴포넌트 기반 선언적 UI, 생태계 성숙도                           |
+| 언어            | TypeScript (strict)   | `any` 금지, 컴파일 타임 타입 안전성                              |
+| 빌드            | Vite 7                | esbuild 기반 HMR, Webpack 대비 빠른 빌드                         |
+| 스타일          | styled-components     | 테마 토큰을 props로 전달, 동적 스타일링에 유리                   |
+| HTTP            | axios                 | 인터셉터로 토큰 부착/갱신 자동화, 인스턴스 분리 가능             |
+| 서버 상태       | @tanstack/react-query | 캐시 키 계층화, 자동 무효화, 로딩/에러 상태 관리                 |
+| 클라이언트 상태 | Zustand               | Provider 불필요, React 외부(인터셉터)에서 `getState()` 접근 가능 |
+| JWT             | jwt-decode            | accessToken payload에서 사용자 정보 추출 (서명 검증은 서버 담당) |
+| 쿠키            | js-cookie             | refreshToken을 SameSite=Strict 쿠키로 관리                       |
+
+### Zustand을 선택한 이유
+
+인증 상태는 React 컴포넌트뿐 아니라 **axios 인터셉터**(React 외부)에서도 접근해야 한다.
+Context API는 `useContext()`로만 접근 가능하지만, Zustand은 `useAuthStore.getState()`로 어디서든 동기적으로 읽고 쓸 수 있다.
 
 ---
 
-## 시작하기
-
-### 필수 환경
-
-- Node.js 18 이상
-- npm
-
-### 설치 및 실행
+## 실행 방법
 
 ```bash
-# 의존성 설치
 npm install
-
-# 개발 서버 실행
-npm run dev
-
-# 프로덕션 빌드
-npm run build
-
-# 빌드 결과 미리보기
-npm run preview
-
-# 린트 검사
-npm run lint
+npm run dev      # 개발 서버 (http://localhost:5173)
+npm run build    # 프로덕션 빌드
+npm run lint     # ESLint 검사
 ```
 
 ### 환경 변수
 
-프로젝트 루트의 `.env` 파일:
+프로젝트 루트 `.env`:
 
 ```
 VITE_API_BASE_URL=https://front-mission.bigs.or.kr
@@ -80,584 +60,284 @@ VITE_API_BASE_URL=https://front-mission.bigs.or.kr
 
 ```
 src/
-├── main.tsx                        # 엔트리포인트 (Provider 트리 구성)
+├── main.tsx                        # Provider 트리 구성
 ├── App.tsx                         # 라우트 정의
 │
-├── features/                       # 기능(도메인) 단위 모듈
-│   ├── auth/                       # 인증 기능
-│   │   ├── api/index.ts            #   signUp, signIn API 함수
-│   │   ├── store/
-│   │   │   └── useAuthStore.ts    #   Zustand 인증 상태 스토어
-│   │   ├── hooks/useAuth.ts        #   useSignUp, useSignIn 뮤테이션 훅 (로그아웃은 useAuthStore.signOut 사용)
-│   │   ├── utils/decodeToken.ts   #   accessToken JWT 디코딩 유틸리티
-│   │   └── types/index.ts          #   SignUpRequest, SignInRequest, AuthUser 등
+├── features/                       # 도메인 단위 모듈
+│   ├── auth/
+│   │   ├── api/index.ts            #   signUp, signIn API
+│   │   ├── store/useAuthStore.ts   #   Zustand 인증 스토어
+│   │   ├── hooks/useAuth.ts        #   useSignUp, useSignIn 뮤테이션
+│   │   ├── utils/decodeToken.ts    #   JWT 디코딩 유틸리티
+│   │   └── types/index.ts          #   AuthUser, TokenPayload 등
 │   │
-│   └── board/                      # 게시판 기능
-│       ├── api/index.ts            #   게시글 CRUD API 함수
-│       ├── hooks/useBoards.ts      #   React Query 훅 + 캐시 키 팩토리
+│   └── board/
+│       ├── api/index.ts            #   게시글 CRUD API
+│       ├── hooks/useBoards.ts      #   React Query 훅 + 캐시 키
 │       └── types/index.ts          #   BoardDetail, PaginatedResponse 등
 │
-├── pages/                          # 페이지 컴포넌트 (라우트 1:1 매핑)
+├── pages/                          # 라우트 1:1 매핑
 │   ├── LoginPage.tsx
 │   ├── SignupPage.tsx
 │   ├── BoardListPage.tsx
 │   ├── BoardDetailPage.tsx
-│   ├── BoardFormPage.tsx           #   게시글 생성/수정 통합
-│   └── index.ts                    #   배럴 export
+│   └── BoardFormPage.tsx           #   생성/수정 통합
 │
-└── shared/                         # 공유 유틸리티
+└── shared/
     ├── api/
     │   ├── client.ts               #   axios 인스턴스 + 인터셉터
-    │   ├── tokenStorage.ts         #   JWT 토큰 저장/관리
-    │   ├── queryClient.ts          #   React Query 전역 설정
-    │   └── index.ts
-    ├── components/                 #   재사용 UI 컴포넌트
-    │   ├── Button.tsx
-    │   ├── Input.tsx
-    │   ├── Textarea.tsx
-    │   ├── Select.tsx
-    │   ├── FileUpload.tsx
-    │   ├── CategoryBadge.tsx
-    │   ├── CategoryTabs.tsx
-    │   ├── Pagination.tsx
-    │   ├── NavHeader.tsx
-    │   ├── MobileNavHeader.tsx
-    │   ├── BackLink.tsx
-    │   ├── ProtectedRoute.tsx
-    │   └── index.ts
+    │   ├── tokenStorage.ts         #   토큰 저장소 (메모리 + 쿠키)
+    │   └── queryClient.ts          #   React Query 설정
+    ├── components/                 #   재사용 UI (Button, Input 등)
     └── styles/
-        ├── theme.ts                #   Light/Dark 테마 토큰
-        ├── GlobalStyle.ts          #   CSS 리셋 + 전역 스타일
-        ├── useThemeStore.ts        #   Zustand 테마 상태 스토어
-        ├── ThemeProvider.tsx        #   styled-components ThemeProvider 래퍼
-        └── styled.d.ts             #   styled-components 타입 확장
+        ├── theme.ts                #   Light/Dark 디자인 토큰
+        ├── useThemeStore.ts        #   Zustand 테마 스토어
+        └── ThemeProvider.tsx        #   styled-components 연결
 ```
 
 ---
 
-## 아키텍처 개요
+## 전체 아키텍처
 
-### Provider 트리 (`main.tsx`)
-
-앱이 실행되면 아래 순서로 Provider가 감싸진다:
-
-```tsx
-<StrictMode>
-  <QueryClientProvider>
-    {/* React Query 캐시 */}
-    <BrowserRouter>
-      {/* 클라이언트 라우팅 */}
-      <ThemeModeProvider>
-        {/* styled-components 테마 주입 */}
-        <GlobalStyle /> {/* CSS 리셋 */}
-        <App /> {/* 라우트 정의 */}
-      </ThemeModeProvider>
-    </BrowserRouter>
-  </QueryClientProvider>
-</StrictMode>
-```
-
-각 Provider의 역할:
-
-| Provider              | 역할                                                            |
-| --------------------- | --------------------------------------------------------------- |
-| `QueryClientProvider` | React Query의 캐시 저장소를 앱 전체에 공유                      |
-| `BrowserRouter`       | URL 기반 클라이언트 사이드 라우팅 활성화                        |
-| `ThemeModeProvider`   | Zustand 테마 스토어에서 mode를 읽어 styled-components 테마 주입 |
-
-### 데이터 흐름 요약
+### Provider 트리
 
 ```
-[사용자 조작]
-    ↓
-[페이지 컴포넌트]  →  커스텀 훅(useBoards 등) 호출
-    ↓
-[React Query]      →  캐시 확인 → 없으면 API 함수 호출
-    ↓
-[API 함수]         →  boardApi.getBoards() 등
-    ↓
-[apiClient]        →  공유 axios 인스턴스 (인터셉터가 토큰 부착)
-    ↓
-[서버 응답]        →  React Query가 캐시에 저장 → 컴포넌트 리렌더
+StrictMode
+  └─ QueryClientProvider          // React Query 캐시
+       └─ BrowserRouter           // 클라이언트 라우팅
+            └─ ThemeModeProvider   // styled-components 테마 주입
+                 └─ App
 ```
 
----
+인증(`useAuthStore`)과 테마(`useThemeStore`)는 Zustand이므로 Provider가 필요 없다.
+`ThemeModeProvider`는 styled-components `ThemeProvider`를 감싸는 래퍼로만 존재한다.
 
-## 라우팅 구조
+### 데이터 흐름
 
-`src/App.tsx`에 정의된 라우트:
-
-| 경로               | 페이지          | 접근 제어        | 설명                              |
-| ------------------ | --------------- | ---------------- | --------------------------------- |
-| `/`                | -               | -                | `/boards`로 리다이렉트            |
-| `/login`           | LoginPage       | `GuestRoute`     | 로그인 (인증 시 `/boards`로 이동) |
-| `/signup`          | SignupPage      | `GuestRoute`     | 회원가입                          |
-| `/boards`          | BoardListPage   | `ProtectedRoute` | 게시글 목록                       |
-| `/boards/new`      | BoardFormPage   | `ProtectedRoute` | 게시글 작성                       |
-| `/boards/:id`      | BoardDetailPage | 없음             | 게시글 상세                       |
-| `/boards/:id/edit` | BoardFormPage   | `ProtectedRoute` | 게시글 수정                       |
-
-### 라우트 가드
-
-```tsx
-// src/shared/components/ProtectedRoute.tsx
-
-// 로그인하지 않으면 /login으로 리다이렉트
-export function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuthStore();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-}
-
-// 이미 로그인했으면 /boards로 리다이렉트 (로그인/회원가입 페이지 재접근 방지)
-export function GuestRoute({ children }) {
-  const { isAuthenticated } = useAuthStore();
-  if (isAuthenticated) return <Navigate to="/boards" replace />;
-  return <>{children}</>;
-}
+```
+컴포넌트 → 커스텀 훅 → React Query(캐시 확인) → API 함수 → apiClient(인터셉터가 토큰 부착) → 서버
+                                                                                                ↓
+컴포넌트 ← 리렌더 ← React Query(캐시 저장) ← ─────────────────────────────────────── 응답
 ```
 
 ---
 
 ## 인증 시스템
 
-### 토큰 저장 방식
+### 토큰 저장 전략
 
-```
-┌──────────────────────────────────────────────────────┐
-│ accessToken                                          │
-│ ・저장 위치: JavaScript 메모리 (변수)                    │
-│ ・장점: XSS 공격에 안전 (DOM에서 접근 불가)               │
-│ ・단점: 새로고침하면 사라짐 → refreshToken으로 재발급      │
-├──────────────────────────────────────────────────────┤
-│ refreshToken                                         │
-│ ・저장 위치: 쿠키 (js-cookie)                           │
-│ ・보안 설정: Secure + SameSite=Strict                  │
-│ ・만료: 7일                                            │
-│ ・역할: accessToken 만료 시 새 토큰 쌍을 발급받는 데 사용  │
-└──────────────────────────────────────────────────────┘
-```
-
-`src/shared/api/tokenStorage.ts`에서 관리한다:
-
-```typescript
-export const tokenStorage = {
-  getAccessToken()                              // 메모리에서 반환
-  getRefreshToken()                             // 쿠키에서 반환
-  setTokens(accessToken, refreshToken)          // 둘 다 저장 (순수 저장만)
-  clearTokens()                                 // 둘 다 삭제 (순수 삭제만)
-  hasTokens(): boolean                          // refreshToken 쿠키 존재 여부
-};
-```
-
-`tokenStorage`는 순수한 토큰 저장/삭제만 담당한다.
-인증 상태 갱신(`useAuthStore`)이나 리다이렉트는 각 호출부에서 직접 처리한다.
+| 토큰         | 저장 위치                        | 이유                                                            |
+| ------------ | -------------------------------- | --------------------------------------------------------------- |
+| accessToken  | JavaScript 메모리(변수)          | XSS로 탈취 불가. 새로고침 시 사라지지만 refreshToken으로 재발급 |
+| refreshToken | 쿠키 (SameSite=Strict, 7일 만료) | CSRF 방어. 브라우저가 자동 관리                                 |
 
 ### 로그인 흐름
 
 ```
-1. 사용자가 LoginPage에서 username/password 입력 후 "Sign In" 클릭
-2. useSignIn() 뮤테이션이 POST /auth/signin 요청
-3. 서버 응답: { accessToken, refreshToken }
-4. useSignIn의 onSuccess에서:
-   ・tokenStorage.setTokens()로 토큰 저장
-   ・decodeAccessToken()으로 JWT payload에서 사용자 정보(name, username) 추출
-   ・useAuthStore에 user 저장 + isAuthenticated = true
-5. LoginPage의 onSuccess에서 navigate("/boards")로 이동
+사용자 입력 → POST /auth/signin → { accessToken, refreshToken }
+                                        │
+                                        ├─ tokenStorage.setTokens()     // 토큰 저장
+                                        ├─ decodeAccessToken()          // JWT → { name, username }
+                                        ├─ useAuthStore.setUser()       // 스토어에 사용자 정보
+                                        ├─ useAuthStore.setAuthenticated(true)
+                                        └─ navigate("/boards")
 ```
 
-### 로그아웃 흐름
+### 토큰 자동 갱신 (핵심)
 
 ```
-1. 사용자가 NavHeader에서 "Sign Out" 클릭
-2. useAuthStore.signOut() 호출:
-   ・tokenStorage.clearTokens()로 토큰 삭제
-   ・isAuthenticated = false, user = null로 초기화
-   ・window.location.replace("/login")로 리다이렉트
+API 요청 → 서버 401/403 응답
+              │
+              ├─ 이미 갱신 중? → 대기 큐(failedQueue)에 추가, 갱신 완료 대기
+              │
+              └─ 갱신 시작
+                   ├─ POST /auth/refresh (기본 axios 사용, 인터셉터 무한루프 방지)
+                   │    ├─ 성공 → 새 토큰 저장 + 사용자 정보 갱신 + 대기 큐 일괄 재시도
+                   │    └─ 실패 → 대기 큐 전체 reject + forceSignOut()
+                   │
+                   └─ refreshToken 없음 → forceSignOut() → /login 리다이렉트
 ```
 
-### 토큰 자동 갱신 흐름
+**동시 401 처리**: 여러 API가 동시에 401을 받으면, 첫 번째만 갱신하고 나머지는 큐에서 대기한다.
+`isRefreshing` 플래그 + `failedQueue` 배열로 구현했다.
+
+**새로고침 직후**: accessToken은 메모리에서 사라지지만 refreshToken(쿠키)은 남아있다.
+요청 인터셉터가 이를 감지하고 API 호출 전에 **선제적으로** 토큰을 갱신한다.
+
+### 로그아웃
 
 ```
-1. API 요청 시 accessToken이 만료되어 서버가 401/403 응답
-2. 응답 인터셉터가 이를 감지
-3. refreshToken으로 POST /auth/refresh 호출
-4. 성공 시:
-   ・새 토큰 쌍 저장 + JWT 디코딩으로 사용자 정보 갱신
-   ・실패했던 원래 요청을 새 토큰으로 재시도
-5. 실패 시 (refreshToken도 만료):
-   ・useAuthStore.forceSignOut() → 토큰 삭제 + 스토어 갱신 + /login 리다이렉트
+signOut() → tokenStorage.clearTokens() → { isAuthenticated: false, user: null } → window.location.replace("/login")
 ```
 
-### 인증 상태 동기화 구조
+`window.location.replace`를 사용한 이유: Zustand은 React Router의 `navigate`에 접근할 수 없다.
+인증 실패는 드문 이벤트이므로 SPA 전환 대신 풀 리로드가 합리적이다.
 
-`tokenStorage`는 순수한 토큰 저장소이고, 각 호출부에서 스토어 갱신을 직접 처리한다:
-
-```
-로그인 성공:    setTokens → decodeAccessToken → setUser + setAuthenticated(true)
-토큰 갱신 성공: setTokens → decodeAccessToken → setUser + setAuthenticated(true)  (인터셉터)
-로그아웃:       signOut()     → clearTokens + user/auth 초기화 + 리다이렉트
-인증 실패:      forceSignOut() → clearTokens + user/auth 초기화 + 리다이렉트  (인터셉터)
-```
-
-### useAuthStore (`src/features/auth/store/useAuthStore.ts`)
-
-Zustand 기반 인증 상태 스토어. Provider 없이 어디서든 직접 구독한다:
+### useAuthStore 인터페이스
 
 ```typescript
 interface AuthState {
-  isAuthenticated: boolean;               // 현재 로그인 상태
-  user: AuthUser | null;                  // JWT에서 추출한 사용자 정보 (name, username)
-  setAuthenticated: (v: boolean) => void; // 인증 상태 직접 변경
-  setUser: (user: AuthUser | null) => void; // 사용자 정보 저장
-  signOut: () => void;                    // 로그아웃 (토큰 삭제 + 상태 초기화 + 리다이렉트)
-  forceSignOut: () => void;               // 인터셉터용 강제 로그아웃
+  isAuthenticated: boolean;
+  user: AuthUser | null; // JWT payload에서 추출한 { name, username }
+  setAuthenticated: (v: boolean) => void;
+  setUser: (user: AuthUser | null) => void;
+  signOut: () => void; // 사용자 주도 로그아웃
+  forceSignOut: () => void; // 인터셉터에서 호출하는 강제 로그아웃
 }
 ```
 
-- 앱 시작 시 `tokenStorage.hasTokens()`로 초기 인증 상태 판별
-- 로그인/토큰 갱신 성공 시 `decodeAccessToken()`으로 JWT payload에서 사용자 정보를 추출하여 `setUser()` 호출
-- 인증 해제 시 `user: null`로 초기화 + `window.location.replace("/login")`으로 리다이렉트
-
 ---
 
-## API 구조
+## API 통신 구조
 
-### axios 인스턴스 (`src/shared/api/client.ts`)
+### 인스턴스 분리
 
-앱 전체에서 하나의 axios 인스턴스(`apiClient`)를 공유한다:
+| 용도      | 인스턴스                    | 이유                          |
+| --------- | --------------------------- | ----------------------------- |
+| 일반 API  | `apiClient` (공유 인스턴스) | 인터셉터가 토큰 자동 부착     |
+| 토큰 갱신 | `axios` (기본 인스턴스)     | 인터셉터를 타면 무한루프 발생 |
 
-```typescript
-export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
-});
-```
-
-### 요청 인터셉터
-
-모든 요청 직전에 실행되어 accessToken을 헤더에 자동 부착한다:
-
-```typescript
-apiClient.interceptors.request.use(async (config) => {
-  let accessToken = tokenStorage.getAccessToken();
-
-  // 새로고침 직후: accessToken은 사라졌지만 refreshToken(쿠키)은 남아있는 경우
-  // → 요청 전에 미리 토큰을 갱신한다
-  if (!accessToken && tokenStorage.getRefreshToken()) {
-    try {
-      accessToken = await refreshAccessToken();
-    } catch {
-      // 갱신 실패 → useAuthStore.forceSignOut()이 리다이렉트 처리
-      tokenStorage.clearTokens();
-      return Promise.reject(new Error("Authentication required"));
-    }
-  }
-
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
-  }
-  return config;
-});
-```
-
-### 응답 인터셉터
-
-401/403 응답 시 토큰을 자동 갱신하고 실패한 요청을 재시도한다:
+### 인터셉터 동작
 
 ```
-[401/403 발생]
-    ↓
-갱신 중인 요청이 이미 있는가?
-├── YES → 이 요청을 대기 큐(failedQueue)에 추가, 갱신 완료 대기
-└── NO  → 토큰 갱신 시작
-           ├── refreshToken 없음 → forceSignOut() (/login 리다이렉트)
-           └── refreshToken 있음 → POST /auth/refresh
-                ├── 성공 → 새 토큰 저장, 대기 큐 재시도, 원래 요청 재시도
-                └── 실패 → 대기 큐 전체 실패, forceSignOut() (/login 리다이렉트)
+[요청 인터셉터]
+  1. accessToken 확인
+  2. 없으면 refreshToken으로 선제적 갱신 (새로고침 직후 대응)
+  3. Authorization 헤더 부착
+
+[응답 인터셉터]
+  1. 401/403 감지
+  2. _retry 플래그로 무한 루프 방지
+  3. isRefreshing이면 큐에 추가, 아니면 갱신 시작
+  4. 갱신 성공 → 원래 요청 재시도
+  5. 갱신 실패 → forceSignOut()
 ```
-
-핵심 포인트:
-
-- **중복 갱신 방지**: `isRefreshing` 플래그와 `pendingRefreshPromise`로 동시에 여러 갱신 요청이 발생하지 않도록 한다
-- **큐 기반 동시 요청 처리**: 갱신 중 들어온 다른 401 요청은 큐에 쌓아뒀다가 갱신 완료 후 일괄 재시도
-- **무한 루프 방지**: `_retry` 플래그로 이미 재시도한 요청은 다시 처리하지 않음
-- **인터셉터 분리**: 토큰 갱신 요청은 `apiClient`가 아닌 기본 `axios`를 사용하여 인터셉터 무한루프를 방지
 
 ### API 엔드포인트
 
-#### 인증 API (`src/features/auth/api/index.ts`)
+| 메서드   | 경로                     | 설명                                     |
+| -------- | ------------------------ | ---------------------------------------- |
+| `POST`   | `/auth/signup`           | 회원가입                                 |
+| `POST`   | `/auth/signin`           | 로그인 → `{ accessToken, refreshToken }` |
+| `POST`   | `/auth/refresh`          | 토큰 갱신 (인터셉터에서 자동 호출)       |
+| `GET`    | `/boards?page=0&size=10` | 게시글 목록 (페이지네이션)               |
+| `GET`    | `/boards/:id`            | 게시글 상세                              |
+| `GET`    | `/boards/categories`     | 카테고리 목록                            |
+| `POST`   | `/boards`                | 게시글 생성 (FormData)                   |
+| `PATCH`  | `/boards/:id`            | 게시글 수정 (FormData)                   |
+| `DELETE` | `/boards/:id`            | 게시글 삭제                              |
 
-| 메서드 | 경로            | 설명                                     |
-| ------ | --------------- | ---------------------------------------- |
-| `POST` | `/auth/signup`  | 회원가입                                 |
-| `POST` | `/auth/signin`  | 로그인 → `{ accessToken, refreshToken }` |
-| `POST` | `/auth/refresh` | 토큰 갱신 (인터셉터에서 자동 호출)       |
+### FormData 변환
 
-#### 게시판 API (`src/features/board/api/index.ts`)
-
-| 메서드   | 경로                     | 설명                       |
-| -------- | ------------------------ | -------------------------- |
-| `GET`    | `/boards?page=0&size=10` | 게시글 목록 (페이지네이션) |
-| `GET`    | `/boards/:id`            | 게시글 상세                |
-| `GET`    | `/boards/categories`     | 카테고리 목록              |
-| `POST`   | `/boards`                | 게시글 생성 (FormData)     |
-| `PATCH`  | `/boards/:id`            | 게시글 수정 (FormData)     |
-| `DELETE` | `/boards/:id`            | 게시글 삭제                |
-
-#### FormData 변환 방식
-
-게시글 생성/수정 시 서버는 JSON 필드를 `"request"`라는 이름의 JSON Blob 파트로 받는다:
+서버가 JSON 필드를 `"request"`라는 이름의 Blob 파트로 요구한다:
 
 ```typescript
-const createFormData = (data) => {
-  const formData = new FormData();
-  const { file, ...requestBody } = data;
-
-  // JSON 데이터를 Blob으로 감싸서 Content-Type을 명시
-  formData.append(
-    "request",
-    new Blob([JSON.stringify(requestBody)], { type: "application/json" }),
-  );
-
-  if (file) {
-    formData.append("file", file);
-  }
-  return formData;
-};
+formData.append(
+  "request",
+  new Blob([JSON.stringify(requestBody)], { type: "application/json" }),
+);
 ```
 
 ---
 
-## 상태 관리
+## 상태 관리 구조
 
-이 프로젝트는 두 가지 상태 관리 방식을 사용한다:
+### 역할 분리
 
-| 종류            | 도구        | 용도                                                |
-| --------------- | ----------- | --------------------------------------------------- |
-| 서버 상태       | React Query | API에서 가져온 데이터 (게시글 목록, 상세, 카테고리) |
-| 클라이언트 상태 | Zustand     | 인증 상태 (useAuthStore), 테마 모드 (useThemeStore) |
+| 종류            | 도구        | 대상             | 이유                                     |
+| --------------- | ----------- | ---------------- | ---------------------------------------- |
+| 서버 상태       | React Query | 게시글, 카테고리 | 캐싱, 자동 갱신, 로딩/에러 상태          |
+| 클라이언트 상태 | Zustand     | 인증, 테마       | Provider 없이 전역 접근, React 외부 접근 |
+| 폼 상태         | useState    | 입력값           | 컴포넌트 로컬, 서버 동기화 불필요        |
 
-### React Query 설정 (`src/shared/api/queryClient.ts`)
+### React Query 캐시 키 계층
 
-```typescript
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5, // 5분간 데이터를 "신선"하게 취급
-      retry: 1, // 실패 시 1번만 재시도
-      refetchOnWindowFocus: false, // 탭 전환 시 자동 재요청 안 함
-    },
-  },
-});
+```
+["boards"]                              ← boardKeys.all
+  ├─ ["boards", "list"]                 ← boardKeys.lists()
+  │    └─ ["boards", "list", {page, size}]  ← boardKeys.list(params)
+  ├─ ["boards", "detail"]              ← boardKeys.details()
+  │    └─ ["boards", "detail", 42]     ← boardKeys.detail(42)
+  └─ ["boards", "categories"]          ← boardKeys.categories()
 ```
 
-### 캐시 키 팩토리 (`src/features/board/hooks/useBoards.ts`)
+계층 구조이므로 상위 키로 하위를 일괄 무효화할 수 있다:
 
-```typescript
-export const boardKeys = {
-  all: ["boards"], // 최상위
-  lists: () => [...boardKeys.all, "list"], // 모든 목록
-  list: (params) => [...boardKeys.lists(), params], // 특정 페이지
-  details: () => [...boardKeys.all, "detail"], // 모든 상세
-  detail: (id) => [...boardKeys.details(), id], // 특정 게시글
-  categories: () => [...boardKeys.all, "categories"], // 카테고리
-};
-```
+| 동작 | 무효화 대상              | 이유                            |
+| ---- | ------------------------ | ------------------------------- |
+| 생성 | `lists()`                | 새 항목을 목록에 반영           |
+| 수정 | `lists()` + `detail(id)` | 목록 제목 + 상세 내용 동시 갱신 |
+| 삭제 | `lists()`                | 목록에서 항목 제거              |
 
-계층 구조 덕분에 상위 키로 하위 키를 한번에 무효화할 수 있다:
+### 카테고리 캐시
 
-```typescript
-// boardKeys.lists()로 무효화하면
-// list({page:0}), list({page:1}), ... 모든 목록 캐시가 함께 무효화된다
-queryClient.invalidateQueries({ queryKey: boardKeys.lists() });
-```
-
-### 캐시 무효화 전략
-
-| 동작        | 무효화 대상                                  | 이유                         |
-| ----------- | -------------------------------------------- | ---------------------------- |
-| 게시글 생성 | `boardKeys.lists()`                          | 목록에 새 항목 반영          |
-| 게시글 수정 | `boardKeys.lists()` + `boardKeys.detail(id)` | 목록의 제목 + 상세 내용 갱신 |
-| 게시글 삭제 | `boardKeys.lists()`                          | 목록에서 항목 제거           |
-
-### React Query 커스텀 훅
-
-```typescript
-// Query 훅 (데이터 조회)
-useBoards(params); // 게시글 목록 (page, size)
-useBoard(id); // 게시글 상세 (id가 falsy이면 요청 안 함)
-useBoardCategories(); // 카테고리 맵 (staleTime: Infinity → 캐시 무기한)
-
-// Mutation 훅 (데이터 변경)
-useCreateBoard(); // 생성 → 성공 시 목록 캐시 무효화
-useUpdateBoard(); // 수정 → 성공 시 목록 + 상세 캐시 무효화
-useDeleteBoard(); // 삭제 → 성공 시 목록 캐시 무효화
-```
+`useBoardCategories()`는 `staleTime: Infinity`로 설정했다.
+카테고리 목록은 사실상 정적 데이터이므로 앱 생명주기 동안 재요청하지 않는다.
 
 ---
 
-## 게시판 기능
+## 라우팅과 접근 제어
 
-### 목록 조회 흐름
+| 경로               | 페이지          | 가드             | 설명                     |
+| ------------------ | --------------- | ---------------- | ------------------------ |
+| `/`                | -               | -                | `/boards`로 리다이렉트   |
+| `/login`           | LoginPage       | `GuestRoute`     | 인증 시 `/boards`로 이동 |
+| `/signup`          | SignupPage      | `GuestRoute`     | 인증 시 `/boards`로 이동 |
+| `/boards`          | BoardListPage   | `ProtectedRoute` | 게시글 목록              |
+| `/boards/new`      | BoardFormPage   | `ProtectedRoute` | 게시글 작성              |
+| `/boards/:id`      | BoardDetailPage | 없음             | 게시글 상세              |
+| `/boards/:id/edit` | BoardFormPage   | `ProtectedRoute` | 게시글 수정              |
 
-```
-BoardListPage 마운트
-    ↓
-useBoards({ page, size }) 호출
-    ↓
-React Query가 boardKeys.list({ page, size }) 캐시 확인
-├── 캐시 있음 (5분 이내) → 캐시 데이터 반환
-└── 캐시 없음/만료 → boardApi.getBoards() → GET /boards?page=0&size=10
-    ↓
-PaginatedResponse<BoardListItem> 수신
-    ↓
-데스크톱: 테이블 (Category | Title | Date)
-모바일: 카드 레이아웃
-    ↓
-Pagination 컴포넌트로 페이지 이동
-```
-
-### 상세 조회 흐름
-
-```
-BoardDetailPage 마운트 → URL에서 id 추출
-    ↓
-useBoard(Number(id)) 호출
-    ↓
-boardApi.getBoard(id) → GET /boards/:id
-    ↓
-BoardDetail { id, title, content, boardCategory, imageUrl, createdAt }
-    ↓
-카테고리 뱃지 + 날짜 + 제목 + 이미지(있으면) + 본문
-    ↓
-인증된 사용자: Edit / Delete 버튼 표시
-```
-
-### 생성/수정 흐름 (BoardFormPage)
-
-하나의 `BoardFormPage`가 URL의 `:id` 유무로 생성/수정 모드를 구분한다:
-
-```typescript
-const { id } = useParams<{ id: string }>();
-const isEdit = !!id;
-```
-
-| 항목         | 생성 모드 (`/boards/new`) | 수정 모드 (`/boards/:id/edit`) |
-| ------------ | ------------------------- | ------------------------------ |
-| 제목         | "New Post"                | "Edit Post"                    |
-| 버튼         | "Publish"                 | "Save Changes"                 |
-| 로딩 텍스트  | "Publishing..."           | "Saving..."                    |
-| 초기값       | 빈 폼                     | 기존 게시글 데이터 로드        |
-| 성공 시 이동 | `/boards`                 | `/boards/:id`                  |
-| 이미지       | 새 업로드만               | 기존 이미지 미리보기 + 교체    |
-
-### 삭제 흐름
-
-```
-BoardDetailPage에서 "Delete" 클릭
-    ↓
-confirm("Are you sure you want to delete this post?")
-├── 취소 → 아무 동작 없음
-└── 확인 → useDeleteBoard().mutate(id)
-    ↓
-boardApi.deleteBoard(id) → DELETE /boards/:id
-    ↓
-성공 → 목록 캐시 무효화 → navigate("/boards")
-```
+- **ProtectedRoute**: 미인증 → `/login` 리다이렉트
+- **GuestRoute**: 인증됨 → `/boards` 리다이렉트 (로그인 페이지 재접근 방지)
+- **BoardFormPage**: URL의 `:id` 유무로 생성/수정 모드를 자동 구분하는 통합 컴포넌트
 
 ---
 
-## 컴포넌트 설계
+## 설계 결정과 트레이드오프
 
-### 공통 UI 컴포넌트 (`src/shared/components/`)
+### 1. accessToken을 메모리에 저장한 이유
 
-#### 폼 컴포넌트
+localStorage에 저장하면 XSS 공격 시 토큰이 탈취된다.
+메모리 변수는 JavaScript 실행 컨텍스트 내에서만 접근 가능하므로 DOM 기반 공격에 안전하다.
+대신 새로고침마다 토큰이 사라지는데, 요청 인터셉터가 refreshToken으로 선제적 갱신하여 해결했다.
 
-| 컴포넌트     | 설명                              | 주요 props                                                                     |
-| ------------ | --------------------------------- | ------------------------------------------------------------------------------ |
-| `Button`     | 4가지 variant 지원                | `variant` (`primary`/`outline`/`destructive`/`ghost`), `fullWidth`, `disabled` |
-| `Input`      | Label + Input + Error 그룹        | `label`, `error`, 나머지 HTML input 속성                                       |
-| `Textarea`   | Label + Textarea 그룹             | `label`, 나머지 HTML textarea 속성                                             |
-| `Select`     | 네이티브 드롭다운 (커스텀 스타일) | `label`, `options: { value, label }[]`, `placeholder`                          |
-| `FileUpload` | 이미지 업로드 + 미리보기          | `file`, `existingImageUrl`, `onChange`                                         |
+### 2. 토큰 갱신 시 큐 패턴을 사용한 이유
 
-#### 게시판 컴포넌트
+페이지에 여러 API 호출이 동시에 있을 때, 토큰 만료 시 모두 401을 받는다.
+큐 없이 각각 갱신하면 `/auth/refresh`가 N번 호출된다.
+`isRefreshing` 플래그로 첫 번째만 갱신하고, 나머지는 `failedQueue`에서 대기시킨 뒤 갱신 완료 후 일괄 재시도한다.
 
-| 컴포넌트        | 설명                                                                                 |
-| --------------- | ------------------------------------------------------------------------------------ |
-| `CategoryBadge` | 카테고리 코드에 따라 색상이 달라지는 뱃지 (NOTICE=틸, FREE=파랑, QNA=주황, ETC=회색) |
-| `CategoryTabs`  | "All" + 카테고리별 필터 탭                                                           |
-| `Pagination`    | 이전/다음 + 최대 5개 페이지 번호 버튼                                                |
+### 3. 토큰 갱신에 기본 axios를 사용한 이유
 
-#### 네비게이션 컴포넌트
+갱신 요청이 `apiClient`를 타면, 응답 인터셉터가 다시 401을 감지하고 갱신을 시도하는 무한루프가 발생한다.
+기본 `axios`는 인터셉터가 없으므로 이 문제를 원천 차단한다.
 
-| 컴포넌트          | 표시 조건      | 설명                                                       |
-| ----------------- | -------------- | ---------------------------------------------------------- |
-| `NavHeader`       | 768px 초과     | 데스크톱 헤더: 로고 + 사용자 정보 + 테마 토글 + Write 버튼 + Sign in/out |
-| `MobileNavHeader` | 768px 이하     | 모바일 헤더: 로고 + 햄버거 메뉴 (사용자 정보 + 네비게이션)               |
-| `BackLink`        | 상세/폼 페이지 | "← Back to list" 링크                                      |
+### 4. tokenStorage에서 onAuthChange 콜백을 제거한 이유
 
-### 페이지 컴포넌트 (`src/pages/`)
+초기에는 tokenStorage가 콜백으로 스토어를 갱신하는 옵저버 패턴을 사용했다.
+Zustand은 `getState()`로 React 외부에서 직접 접근 가능하므로 콜백이 불필요하다.
+각 호출부에서 `tokenStorage.setTokens()` + `useAuthStore.getState().setAuthenticated(true)`를 명시적으로 호출하는 방식이 흐름을 추적하기 쉽다.
 
-| 페이지            | 레이아웃                                                                                  |
-| ----------------- | ----------------------------------------------------------------------------------------- |
-| `LoginPage`       | 중앙 카드 (420px), username + password                                                    |
-| `SignupPage`      | 중앙 카드, username(이메일) + name + password + confirmPassword, 비밀번호 조건 체크리스트 |
-| `BoardListPage`   | 헤더 → 카테고리 탭 → 테이블/카드 → 페이지네이션                                           |
-| `BoardDetailPage` | 헤더 → BackLink → 게시글 카드 (메타/제목/이미지/본문/Edit·Delete)                         |
-| `BoardFormPage`   | 헤더 → BackLink → 폼 카드 (Title/Category/Image/Content/Cancel·Submit)                    |
+### 5. Zustand에서 window.location.replace를 사용한 이유
 
----
+Zustand 스토어는 React 컴포넌트가 아니므로 `useNavigate()` 훅을 사용할 수 없다.
+`navigate` 함수를 외부에서 주입하는 패턴도 가능하지만, 인증 실패는 드문 이벤트이므로
+풀 리로드(`window.location.replace`)가 더 단순하고 부수효과(메모리 누수 등)를 깔끔히 정리한다.
 
-## 스타일링 & 테마
+### 6. 생성/수정 페이지를 통합한 이유
 
-### 테마 구조 (`src/shared/styles/theme.ts`)
+`BoardFormPage` 하나가 URL의 `:id` 유무로 모드를 구분한다.
+폼 UI, 유효성 검사, FormData 변환 로직이 동일하므로 분리하면 중복이 발생한다.
+제목, 버튼 텍스트, 성공 시 이동 경로만 분기한다.
 
-Light/Dark 두 가지 테마를 `AppTheme` 인터페이스로 정의한다:
+### 7. JWT 디코딩으로 사용자 정보를 얻는 이유
 
-```typescript
-interface AppTheme {
-  colors: {
-    accentPrimary; // 주요 강조색 (Light: #0D6E6E, Dark: #14A3A3)
-    bgPrimary; // 페이지 배경
-    bgSurface; // 카드/서피스 배경
-    textPrimary; // 기본 텍스트
-    error; // 에러 색상
-    success; // 성공 색상
-    // ... 그 외 다수
-  };
-  fonts: {
-    primary: "'Inter', sans-serif";
-    mono: "'JetBrains Mono', monospace";
-  };
-  breakpoints: {
-    mobile: "375px";
-    tablet: "768px";
-    laptop: "1024px";
-    desktop: "1440px";
-  };
-}
-```
+별도의 `/me` API가 없다. accessToken의 payload에 `{ name, username }`이 포함되어 있으므로
+jwt-decode로 클라이언트에서 추출한다. 서명 검증은 서버가 담당하고, 클라이언트는 payload 읽기만 한다.
 
-### 다크모드 (`src/shared/styles/useThemeStore.ts`)
+### 8. FormData에서 JSON을 Blob으로 감싼 이유
 
-- Zustand 스토어로 관리, Provider 불필요
-- `localStorage`에 `"theme-mode"` 키로 사용자 설정 저장
-- 저장값 없으면 OS의 `prefers-color-scheme` 설정을 따름
-- `useThemeStore()` 훅으로 `{ mode, toggleTheme }` 접근
-
-```typescript
-// 컴포넌트에서 사용 예시
-const { mode, toggleTheme } = useThemeStore();
-// mode: "light" | "dark"
-// toggleTheme(): light ↔ dark 전환
-```
-
-### 반응형 브레이크포인트
-
-| 구간     | 너비    | 주요 변화                                |
-| -------- | ------- | ---------------------------------------- |
-| 모바일   | ≤375px  | 카드 레이아웃, 모바일 헤더, padding 16px |
-| 태블릿   | ≤768px  | 모바일 헤더 전환, padding 24px           |
-| 랩톱     | ≤1024px | 데스크톱 헤더, padding 120px             |
-| 데스크톱 | ≤1440px | 최대 너비, padding 240px                 |
+서버(Spring)가 `@RequestPart("request")` 어노테이션으로 JSON 파트를 받는다.
+일반 `formData.append("request", JSON.stringify(data))`는 `text/plain`으로 전송되어 파싱에 실패한다.
+`new Blob([JSON.stringify(data)], { type: "application/json" })`으로 감싸야 서버가 JSON으로 인식한다.
