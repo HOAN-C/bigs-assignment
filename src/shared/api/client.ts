@@ -11,6 +11,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { tokenStorage } from "./tokenStorage";
 import { useAuthStore } from "@/features/auth/store/useAuthStore";
+import { decodeAccessToken } from "@/features/auth/utils/decodeToken";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -62,7 +63,9 @@ const refreshAccessToken = (): Promise<string> => {
     .then((response) => {
       const { accessToken, refreshToken: newRefreshToken } = response.data;
       tokenStorage.setTokens(accessToken, newRefreshToken);
-      useAuthStore.getState().setAuthenticated(true);
+      const store = useAuthStore.getState();
+      store.setUser(decodeAccessToken(accessToken));
+      store.setAuthenticated(true);
       return accessToken;
     })
     .finally(() => {

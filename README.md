@@ -33,8 +33,10 @@ JWT 인증, 게시글 CRUD, 다크모드, 반응형 레이아웃을 지원한다
 | 스타일    | styled-components     | CSS-in-JS                 |
 | HTTP      | axios                 | API 통신                  |
 | 서버 상태 | @tanstack/react-query | 캐싱, 자동 갱신, mutation |
+| 상태 관리 | zustand               | 클라이언트 상태 (인증, 테마) |
 | 라우팅    | react-router-dom      | 클라이언트 사이드 라우팅  |
 | 쿠키      | js-cookie             | refreshToken 쿠키 관리    |
+| JWT       | jwt-decode            | accessToken 디코딩        |
 
 ---
 
@@ -87,7 +89,8 @@ src/
 │   │   ├── store/
 │   │   │   └── useAuthStore.ts    #   Zustand 인증 상태 스토어
 │   │   ├── hooks/useAuth.ts        #   useSignUp, useSignIn 뮤테이션 훅 (로그아웃은 useAuthStore.signOut 사용)
-│   │   └── types/index.ts          #   SignUpRequest, SignInRequest 등
+│   │   ├── utils/decodeToken.ts   #   accessToken JWT 디코딩 유틸리티
+│   │   └── types/index.ts          #   SignUpRequest, SignInRequest, AuthUser 등
 │   │
 │   └── board/                      # 게시판 기능
 │       ├── api/index.ts            #   게시글 CRUD API 함수
@@ -256,8 +259,11 @@ export const tokenStorage = {
 1. 사용자가 LoginPage에서 username/password 입력 후 "Sign In" 클릭
 2. useSignIn() 뮤테이션이 POST /auth/signin 요청
 3. 서버 응답: { accessToken, refreshToken }
-4. useSignIn의 onSuccess에서 tokenStorage.setTokens() + useAuthStore.setAuthenticated(true) 호출
-6. LoginPage의 onSuccess에서 navigate("/boards")로 이동
+4. useSignIn의 onSuccess에서:
+   ・tokenStorage.setTokens()로 토큰 저장
+   ・decodeAccessToken()으로 JWT payload에서 사용자 정보(name, username) 추출
+   ・useAuthStore에 user 저장 + isAuthenticated = true
+5. LoginPage의 onSuccess에서 navigate("/boards")로 이동
 ```
 
 ### 로그아웃 흐름
@@ -266,7 +272,7 @@ export const tokenStorage = {
 1. 사용자가 NavHeader에서 "Sign Out" 클릭
 2. useAuthStore.signOut() 호출:
    ・tokenStorage.clearTokens()로 토큰 삭제
-   ・isAuthenticated = false로 갱신
+   ・isAuthenticated = false, user = null로 초기화
    ・window.location.replace("/login")로 리다이렉트
 ```
 
@@ -277,7 +283,7 @@ export const tokenStorage = {
 2. 응답 인터셉터가 이를 감지
 3. refreshToken으로 POST /auth/refresh 호출
 4. 성공 시:
-   ・새 토큰 쌍 저장 (setTokens + useAuthStore.setAuthenticated(true))
+   ・새 토큰 쌍 저장 + JWT 디코딩으로 사용자 정보 갱신
    ・실패했던 원래 요청을 새 토큰으로 재시도
 5. 실패 시 (refreshToken도 만료):
    ・useAuthStore.forceSignOut() → 토큰 삭제 + 스토어 갱신 + /login 리다이렉트
@@ -288,10 +294,10 @@ export const tokenStorage = {
 `tokenStorage`는 순수한 토큰 저장소이고, 각 호출부에서 스토어 갱신을 직접 처리한다:
 
 ```
-로그인 성공:    tokenStorage.setTokens() + useAuthStore.setAuthenticated(true)
-토큰 갱신 성공: tokenStorage.setTokens() + useAuthStore.setAuthenticated(true)  (인터셉터)
-로그아웃:       useAuthStore.signOut()     → 내부에서 clearTokens + 스토어 갱신 + 리다이렉트
-인증 실패:      useAuthStore.forceSignOut() → 내부에서 clearTokens + 스토어 갱신 + 리다이렉트  (인터셉터)
+로그인 성공:    setTokens → decodeAccessToken → setUser + setAuthenticated(true)
+토큰 갱신 성공: setTokens → decodeAccessToken → setUser + setAuthenticated(true)  (인터셉터)
+로그아웃:       signOut()     → clearTokens + user/auth 초기화 + 리다이렉트
+인증 실패:      forceSignOut() → clearTokens + user/auth 초기화 + 리다이렉트  (인터셉터)
 ```
 
 ### useAuthStore (`src/features/auth/store/useAuthStore.ts`)
@@ -300,16 +306,18 @@ Zustand 기반 인증 상태 스토어. Provider 없이 어디서든 직접 구�
 
 ```typescript
 interface AuthState {
-  isAuthenticated: boolean;           // 현재 로그인 상태
+  isAuthenticated: boolean;               // 현재 로그인 상태
+  user: AuthUser | null;                  // JWT에서 추출한 사용자 정보 (name, username)
   setAuthenticated: (v: boolean) => void; // 인증 상태 직접 변경
-  signOut: () => void;                // 로그아웃 (토큰 삭제 + 상태 갱신 + 리다이렉트)
-  forceSignOut: () => void;           // 인터셉터용 강제 로그아웃
+  setUser: (user: AuthUser | null) => void; // 사용자 정보 저장
+  signOut: () => void;                    // 로그아웃 (토큰 삭제 + 상태 초기화 + 리다이렉트)
+  forceSignOut: () => void;               // 인터셉터용 강제 로그아웃
 }
 ```
 
 - 앱 시작 시 `tokenStorage.hasTokens()`로 초기 인증 상태 판별
-- 토큰 변경 시 각 호출부에서 `setAuthenticated()` / `signOut()` / `forceSignOut()`을 직접 호출
-- 인증 해제 시 `window.location.replace("/login")`으로 리다이렉트
+- 로그인/토큰 갱신 성공 시 `decodeAccessToken()`으로 JWT payload에서 사용자 정보를 추출하여 `setUser()` 호출
+- 인증 해제 시 `user: null`로 초기화 + `window.location.replace("/login")`으로 리다이렉트
 
 ---
 
@@ -585,8 +593,8 @@ boardApi.deleteBoard(id) → DELETE /boards/:id
 
 | 컴포넌트          | 표시 조건      | 설명                                                       |
 | ----------------- | -------------- | ---------------------------------------------------------- |
-| `NavHeader`       | 768px 초과     | 데스크톱 헤더: 로고 + 테마 토글 + Write 버튼 + Sign in/out |
-| `MobileNavHeader` | 768px 이하     | 모바일 헤더: 로고 + 햄버거 메뉴 (드롭다운)                 |
+| `NavHeader`       | 768px 초과     | 데스크톱 헤더: 로고 + 사용자 정보 + 테마 토글 + Write 버튼 + Sign in/out |
+| `MobileNavHeader` | 768px 이하     | 모바일 헤더: 로고 + 햄버거 메뉴 (사용자 정보 + 네비게이션)               |
 | `BackLink`        | 상세/폼 페이지 | "← Back to list" 링크                                      |
 
 ### 페이지 컴포넌트 (`src/pages/`)

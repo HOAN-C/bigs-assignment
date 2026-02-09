@@ -5,11 +5,11 @@
  * height 56, padding [0,16]. 태블릿(768px) 이하에서만 표시된다.
  * 메뉴 열림 시 간단한 드롭다운으로 네비게이션 옵션을 보여준다.
  */
-import { useState } from 'react';
-import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@/features/auth/store/useAuthStore';
-import { useThemeStore } from '../styles';
+import { useState } from "react";
+import styled from "styled-components";
+import { useNavigate } from "react-router-dom";
+import { useAuthStore } from "@/features/auth/store/useAuthStore";
+import { useThemeStore } from "../styles";
 
 const Header = styled.header`
   display: none;
@@ -94,7 +94,7 @@ const MenuItem = styled.button`
 export default function MobileNavHeader() {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
-  const { isAuthenticated, signOut } = useAuthStore();
+  const { isAuthenticated, user, signOut } = useAuthStore();
   const { mode, toggleTheme } = useThemeStore();
 
   const go = (path: string) => {
@@ -110,27 +110,29 @@ export default function MobileNavHeader() {
 
   return (
     <Header>
-      <NavLeft onClick={() => go('/boards')}>
+      <NavLeft onClick={() => go("/boards")}>
         <LogoIcon>▦</LogoIcon>
         <Logo>Board</Logo>
       </NavLeft>
       <MenuButton onClick={() => setIsOpen(!isOpen)}>
-        {isOpen ? '✕' : '☰'}
+        {isOpen ? "✕" : "☰"}
       </MenuButton>
       {isOpen && (
         <Dropdown>
-          <MenuItem onClick={toggleTheme}>
-            {mode === 'light' ? '🌙 Dark mode' : '☀️ Light mode'}
-          </MenuItem>
           {isAuthenticated ? (
             <>
-              <MenuItem onClick={() => go('/boards/new')}>✏️ Write</MenuItem>
+              {user && <MenuItem disabled>{user.name}</MenuItem>}
+              {user && <MenuItem disabled>{user.username}</MenuItem>}
+              <MenuItem onClick={toggleTheme}>
+                {mode === "light" ? "🌙 Dark mode" : "☀️ Light mode"}
+              </MenuItem>
+              <MenuItem onClick={() => go("/boards/new")}>✏️ Write</MenuItem>
               <MenuItem onClick={handleSignOut}>🚪 Sign out</MenuItem>
             </>
           ) : (
             <>
-              <MenuItem onClick={() => go('/login')}>🔑 Sign in</MenuItem>
-              <MenuItem onClick={() => go('/signup')}>📝 Sign up</MenuItem>
+              <MenuItem onClick={() => go("/login")}>🔑 Sign in</MenuItem>
+              <MenuItem onClick={() => go("/signup")}>📝 Sign up</MenuItem>
             </>
           )}
         </Dropdown>

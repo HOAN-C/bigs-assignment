@@ -45,6 +45,12 @@ const NavRight = styled.div`
   gap: 12px;
 `;
 
+const UserName = styled.span`
+  font-size: 14px;
+  font-weight: 500;
+  color: ${({ theme }) => theme.colors.textSecondary};
+`;
+
 const ThemeToggle = styled.button`
   display: flex;
   align-items: center;
@@ -66,7 +72,7 @@ const ThemeToggle = styled.button`
 
 export default function NavHeader() {
   const navigate = useNavigate();
-  const { isAuthenticated, signOut } = useAuthStore();
+  const { isAuthenticated, user, signOut } = useAuthStore();
   const { mode, toggleTheme } = useThemeStore();
 
   const handleSignOut = () => {
@@ -80,11 +86,13 @@ export default function NavHeader() {
         <Logo>BIGS</Logo>
       </NavLeft>
       <NavRight>
-        <ThemeToggle onClick={toggleTheme} title="Toggle theme">
-          {mode === "light" ? "🌙" : "☀️"}
-        </ThemeToggle>
         {isAuthenticated ? (
           <>
+            {user && <UserName>{user.name}</UserName>}
+            {user && <UserName>{user.username}</UserName>}
+            <ThemeToggle onClick={toggleTheme} title="Toggle theme">
+              {mode === "light" ? "🌙" : "☀️"}
+            </ThemeToggle>
             <Button variant="primary" onClick={() => navigate("/boards/new")}>
               Write
             </Button>

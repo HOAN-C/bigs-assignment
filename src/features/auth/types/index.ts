@@ -20,3 +20,21 @@ export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
 }
+
+/** accessToken JWT payload (HS256) */
+export interface TokenPayload {
+  /** 사용자 표시 이름 */
+  name: string;
+  /** 로그인 아이디 (이메일) */
+  username: string;
+  /** 발급 시각 (Unix timestamp, 초) */
+  iat: number;
+  /** 만료 시각 (Unix timestamp, 초) */
+  exp: number;
+}
+
+/** 스토어에 저장할 사용자 정보 (토큰에서 추출) */
+export interface AuthUser {
+  name: string;
+  username: string;
+}
