@@ -6,10 +6,13 @@
  *
  * 반응형 padding: Detail과 동일 패턴
  */
-import { useState, type FormEvent } from 'react';
-import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
-import { useCreateBoard, useBoardCategories } from '@/features/board/hooks/useBoards';
+import { useState } from "react";
+import styled from "styled-components";
+import { useNavigate } from "react-router-dom";
+import {
+  useCreateBoard,
+  useBoardCategories,
+} from "@/features/board/hooks/useBoards";
 import {
   NavHeader,
   MobileNavHeader,
@@ -19,7 +22,7 @@ import {
   Select,
   Textarea,
   FileUpload,
-} from '@/shared/components';
+} from "@/shared/components";
 
 const Page = styled.div`
   min-height: 100vh;
@@ -104,31 +107,30 @@ export default function BoardCreatePage() {
   const navigate = useNavigate();
   const createBoard = useCreateBoard();
   const { data: categories = {} } = useBoardCategories();
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('');
-  const [content, setContent] = useState('');
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [content, setContent] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const categoryOptions = Object.entries(categories).map(([value, label]) => ({
     value,
     label: label as string,
   }));
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const handleSubmit = () => {
+    setError("");
 
     if (!title.trim() || !category || !content.trim()) {
-      setError('Please fill in all required fields.');
+      setError("Please fill in all required fields.");
       return;
     }
 
     createBoard.mutate(
       { title, content, category, ...(file ? { file } : {}) },
       {
-        onSuccess: () => navigate('/boards'),
-        onError: () => setError('Failed to create post.'),
+        onSuccess: () => navigate("/boards"),
+        onError: () => setError("Failed to create post."),
       },
     );
   };
@@ -167,9 +169,11 @@ export default function BoardCreatePage() {
           </Form>
           {error && <ErrorMsg>{error}</ErrorMsg>}
           <Actions>
-            <Button variant="outline" onClick={() => navigate('/boards')}>Cancel</Button>
+            <Button variant="outline" onClick={() => navigate("/boards")}>
+              Cancel
+            </Button>
             <Button onClick={handleSubmit} disabled={createBoard.isPending}>
-              {createBoard.isPending ? 'Publishing...' : 'Publish'}
+              {createBoard.isPending ? "Publishing..." : "Publish"}
             </Button>
           </Actions>
         </FormCard>

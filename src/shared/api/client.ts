@@ -16,9 +16,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
 });
 
 // 현재 토큰 갱신이 진행 중인지 추적하는 플래그
