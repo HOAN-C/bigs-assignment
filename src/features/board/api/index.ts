@@ -1,68 +1,88 @@
 /**
- * 게시판 API 호출 함수 모음
+ * 게시판 API 함수.
  *
- * - 목록 조회 (GET /boards?page&size): 페이지네이션 적용
- * - 단건 조회 (GET /boards/:id): 상세 정보 반환
- * - 카테고리 조회 (GET /boards/categories): NOTICE, FREE, QNA, ETC
- * - 생성 (POST /boards): multipart/form-data, 파일 첨부 가능
- * - 수정 (PATCH /boards/:id): multipart/form-data, 파일 첨부 가능
- * - 삭제 (DELETE /boards/:id)
- *
- * 생성/수정 시 createFormData 헬퍼로 객체를 FormData로 변환한다.
+ * 게시글 생성/수정 시 서버는 multipart/form-data를 요구하는데,
+ * JSON 필드들(title, content, category)을 개별 필드가 아닌
+ * "request"라는 하나의 JSON Blob 파트로 받는 구조다.
+ * createFormData 헬퍼가 이 변환을 담당한다.
  */
-import { apiClient } from '@/shared/api';
+import { apiClient } from "@/shared/api";
 import type {
   BoardListItem,
   BoardDetail,
-  BoardCategory,
+  BoardCategoryMap,
   CreateBoardRequest,
+  CreateBoardResponse,
   UpdateBoardRequest,
   PaginatedResponse,
   PaginationParams,
-} from '../types';
+} from "../types";
 
-// 생성/수정 요청 객체를 multipart/form-data용 FormData로 변환하는 헬퍼
-const createFormData = (data: CreateBoardRequest | UpdateBoardRequest): FormData => {
+/**
+ * 게시글 생성/수정 요청 객체를 서버가 기대하는 FormData 형식으로 변환한다.
+ *
+ * 서버가 JSON 데이터를 "request" 파트(application/json)로 받기 때문에,
+ * 단순 문자열이 아닌 Blob으로 감싸서 Content-Type을 명시해줘야 한다.
+ */
+const createFormData = (
+  data: CreateBoardRequest | UpdateBoardRequest,
+): FormData => {
   const formData = new FormData();
-  formData.append('title', data.title);
-  formData.append('content', data.content);
-  formData.append('category', data.category);
-  if (data.file) {
-    formData.append('file', data.file);
+
+  const { file, ...requestBody } = data;
+  formData.append(
+    "request",
+    new Blob([JSON.stringify(requestBody)], { type: "application/json" }),
+  );
+
+  if (file) {
+    formData.append("file", file);
   }
   return formData;
 };
 
 export const boardApi = {
-  // 게시글 목록 조회 (페이지네이션)
-  getBoards: async (params?: PaginationParams): Promise<PaginatedResponse<BoardListItem>> => {
-    const response = await apiClient.get<PaginatedResponse<BoardListItem>>('/boards', { params });
+  /** GET /boards — 게시글 목록 (페이지네이션) */
+  getBoards: async (
+    params: PaginationParams,
+  ): Promise<PaginatedResponse<BoardListItem>> => {
+    const response = await apiClient.get<PaginatedResponse<BoardListItem>>(
+      "/boards",
+      { params },
+    );
     return response.data;
   },
 
-  // 게시글 단건 상세 조회
+  /** GET /boards/:id — 게시글 상세 */
   getBoard: async (id: number): Promise<BoardDetail> => {
     const response = await apiClient.get<BoardDetail>(`/boards/${id}`);
     return response.data;
   },
 
-  // 카테고리 목록 조회
-  getCategories: async (): Promise<BoardCategory[]> => {
-    const response = await apiClient.get<BoardCategory[]>('/boards/categories');
+  /** GET /boards/categories — 카테고리 목록 (코드→표시명 맵) */
+  getCategories: async (): Promise<BoardCategoryMap> => {
+    const response =
+      await apiClient.get<BoardCategoryMap>("/boards/categories");
     return response.data;
   },
 
-  // 게시글 생성 (FormData로 전송, axios가 Content-Type을 boundary 포함하여 자동 설정)
-  createBoard: async (data: CreateBoardRequest): Promise<void> => {
-    await apiClient.post('/boards', createFormData(data));
+  /** POST /boards — 게시글 생성 */
+  createBoard: async (
+    data: CreateBoardRequest,
+  ): Promise<CreateBoardResponse> => {
+    const response = await apiClient.post<CreateBoardResponse>(
+      "/boards",
+      createFormData(data),
+    );
+    return response.data;
   },
 
-  // 게시글 수정 (FormData로 전송)
+  /** PATCH /boards/:id — 게시글 수정 */
   updateBoard: async (id: number, data: UpdateBoardRequest): Promise<void> => {
     await apiClient.patch(`/boards/${id}`, createFormData(data));
   },
 
-  // 게시글 삭제
+  /** DELETE /boards/:id — 게시글 삭제 */
   deleteBoard: async (id: number): Promise<void> => {
     await apiClient.delete(`/boards/${id}`);
   },

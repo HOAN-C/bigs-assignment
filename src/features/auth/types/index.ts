@@ -1,19 +1,22 @@
-// 회원가입 요청 body (POST /auth/signup)
+/** 회원가입 요청 body (POST /auth/signup) */
 export interface SignUpRequest {
-  username: string;        // 사용자 아이디
-  name: string;            // 표시 이름
-  password: string;        // 비밀번호
-  confirmPassword: string; // 비밀번호 확인
+  /** 로그인에 사용할 고유 아이디 */
+  username: string;
+  /** 사용자 표시 이름 */
+  name: string;
+  password: string;
+  /** 서버에서 password와 일치 여부를 검증한다 */
+  confirmPassword: string;
 }
 
-// 로그인 요청 body (POST /auth/signin)
+/** 로그인 요청 body (POST /auth/signin) */
 export interface SignInRequest {
-  username: string; // 사용자 아이디
-  password: string; // 비밀번호
+  username: string;
+  password: string;
 }
 
-// 로그인 성공 응답 (POST /auth/signin, POST /auth/refresh 공통)
+/** 로그인/토큰 갱신 성공 시 서버가 반환하는 JWT 토큰 쌍 */
 export interface AuthTokens {
-  accessToken: string;  // JWT 액세스 토큰
-  refreshToken: string; // JWT 리프레시 토큰
+  accessToken: string;
+  refreshToken: string;
 }

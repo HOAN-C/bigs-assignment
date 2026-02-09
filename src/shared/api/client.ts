@@ -1,19 +1,17 @@
 /**
- * 공통 Axios 인스턴스 및 인터셉터 설정
+ * 앱 전체에서 사용하는 공통 Axios 인스턴스.
  *
- * 역할:
- *  1. baseURL과 기본 헤더를 가진 axios 인스턴스(apiClient)를 생성한다.
- *  2. 요청 인터셉터: 매 요청마다 메모리에 보관 중인 accessToken을 Authorization 헤더에 주입한다.
- *  3. 응답 인터셉터: 401 응답 시 refreshToken으로 토큰 재발급을 시도하고,
- *     성공하면 원래 요청을 새 토큰으로 재시도한다.
- *     동시에 여러 요청이 401을 받을 경우, refresh는 한 번만 수행하고
- *     나머지 요청은 큐(failedQueue)에 보관했다가 새 토큰으로 일괄 재시도한다.
+ * 이 파일 하나로 모든 API 요청의 인증 처리가 자동화된다.
+ * - 요청 인터셉터: 매 요청마다 accessToken을 Authorization 헤더에 자동 부착
+ * - 응답 인터셉터: 401(인증 만료) 응답 시 토큰을 자동 갱신하고 실패한 요청을 재시도
+ *
+ * 토큰 갱신 중 다른 요청도 401을 받을 수 있기 때문에,
+ * 갱신은 한 번만 실행하고 나머지 요청은 큐에 대기시킨 뒤 일괄 재시도하는 구조다.
  */
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { tokenStorage } from "./tokenStorage";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -22,18 +20,17 @@ export const apiClient = axios.create({
   },
 });
 
-// refresh 요청이 현재 진행 중인지 여부 (중복 refresh 방지 플래그)
+// 현재 토큰 갱신이 진행 중인지 추적하는 플래그
 let isRefreshing = false;
 
-// 401로 실패한 요청들을 담아두는 큐
-// refresh 완료 후 새 토큰으로 resolve하거나, 실패 시 reject한다.
+// 토큰 갱신 중 401을 받은 요청들이 대기하는 큐
+// 갱신이 완료되면 새 토큰으로 resolve되어 각 요청이 재시도된다.
 let failedQueue: Array<{
   resolve: (token: string) => void;
   reject: (error: Error) => void;
 }> = [];
 
-// 큐에 쌓인 Promise들을 일괄 처리하는 헬퍼
-// token이 있으면 성공(resolve), error가 있으면 실패(reject)
+// 큐에 쌓인 대기 요청들을 한번에 처리 (성공 시 새 토큰 전달, 실패 시 에러 전파)
 const processQueue = (error: Error | null, token: string | null = null) => {
   failedQueue.forEach((promise) => {
     if (error) {
@@ -45,8 +42,11 @@ const processQueue = (error: Error | null, token: string | null = null) => {
   failedQueue = [];
 };
 
-// ── 요청 인터셉터 ──
-// 매 요청 전 tokenStorage에서 accessToken을 꺼내 Bearer 헤더에 부착
+/**
+ * [요청 인터셉터]
+ * 모든 요청 직전에 실행되어 accessToken을 헤더에 붙여준다.
+ * 이 덕분에 각 API 호출 코드에서 토큰을 직접 다룰 필요가 없다.
+ */
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const accessToken = tokenStorage.getAccessToken();
@@ -58,22 +58,24 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// ── 응답 인터셉터 ──
-// 401 에러 시 토큰 갱신 → 원래 요청 재시도 로직
+/**
+ * [응답 인터셉터]
+ * 401 응답을 감지하면 refreshToken으로 토큰을 갱신하고, 실패했던 요청을 새 토큰으로 재시도한다.
+ * 동시 401 처리와 무한 루프 방지 로직이 포함되어 있다.
+ */
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
-      _retry?: boolean; // 재시도 여부를 표시하는 커스텀 플래그
+      _retry?: boolean; // 이 요청이 이미 재시도된 것인지 표시
     };
 
-    // 401이 아니거나, 이미 재시도한 요청이면 그대로 에러 전파
+    // 401이 아니거나 이미 재시도한 요청이면 더 이상 처리하지 않음
     if (error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error);
     }
 
-    // 다른 요청이 이미 refresh 중이면, 큐에 넣고 대기
-    // refresh 완료 시 새 토큰을 받아 이 요청만 재시도
+    // 이미 다른 요청이 토큰 갱신 중이면, 이 요청은 큐에 넣고 갱신 완료를 기다림
     if (isRefreshing) {
       return new Promise<string>((resolve, reject) => {
         failedQueue.push({ resolve, reject });
@@ -83,42 +85,35 @@ apiClient.interceptors.response.use(
       });
     }
 
-    // 최초 401: refresh 시작
-    originalRequest._retry = true;
+    // 이 요청이 첫 번째 401 → 토큰 갱신 시작
+    originalRequest._retry = true; // 무한 루프 방지: 재시도 시 이 블록을 다시 타지 않도록
     isRefreshing = true;
 
     const refreshToken = tokenStorage.getRefreshToken();
     if (!refreshToken) {
-      // refreshToken 자체가 없으면 로그아웃 처리 후 에러 전파
+      // refreshToken 자체가 없으면 로그아웃 상태로 간주
       tokenStorage.clearTokens();
       isRefreshing = false;
       return Promise.reject(error);
     }
 
     try {
-      // 별도 axios 인스턴스(기본 axios)로 refresh 요청
-      // apiClient를 쓰면 인터셉터가 다시 타서 무한루프 위험
-      const response = await axios.post(
-        `${API_BASE_URL}/auth/refresh`,
-        { refreshToken },
-        {
-          headers: {
-            Authorization: `Bearer ${tokenStorage.getAccessToken()}`,
-          },
-        },
-      );
+      // apiClient가 아닌 기본 axios를 사용 (apiClient를 쓰면 이 인터셉터가 다시 실행되어 무한루프 발생)
+      const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+        refreshToken,
+      });
 
       const { accessToken, refreshToken: newRefreshToken } = response.data;
 
-      // 새 토큰 저장 후, 큐에 대기 중인 요청들도 새 토큰으로 처리
+      // 새 토큰 저장 + 큐에서 대기 중이던 요청들도 새 토큰으로 재시도
       tokenStorage.setTokens(accessToken, newRefreshToken);
       processQueue(null, accessToken);
 
-      // 원래 요청을 새 토큰으로 재시도
+      // 원래 실패했던 요청을 새 토큰으로 재시도
       originalRequest.headers.Authorization = `Bearer ${accessToken}`;
       return apiClient(originalRequest);
     } catch (refreshError) {
-      // refresh 실패 시 큐 전체 reject, 토큰 삭제(로그아웃)
+      // 토큰 갱신 자체가 실패하면 큐의 모든 요청도 실패 처리하고 로그아웃
       processQueue(refreshError as Error, null);
       tokenStorage.clearTokens();
       return Promise.reject(refreshError);
