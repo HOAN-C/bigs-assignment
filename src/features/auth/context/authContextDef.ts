@@ -6,9 +6,7 @@ import { createContext } from "react";
 
 export interface AuthContextValue {
   isAuthenticated: boolean;
-  /** 로그인 성공 후 호출하여 상태를 갱신한다 */
-  markAsAuthenticated: () => void;
-  /** 로그아웃: 토큰 삭제 + 상태 갱신 */
+  /** 로그아웃: 토큰 삭제 → onAuthChange 콜백이 상태 갱신 + 리다이렉트 처리 */
   signOut: () => void;
 }
 

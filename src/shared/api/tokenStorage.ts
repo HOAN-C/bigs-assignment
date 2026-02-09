@@ -19,9 +19,6 @@ const REFRESH_TOKEN_KEY = "refreshToken";
 
 let accessTokenInMemory: string | null = null;
 
-// 개발 환경(http://localhost)에서는 Secure 쿠키를 사용할 수 없으므로 프로토콜에 따라 분기
-const isSecureContext = window.location.protocol === "https:";
-
 export const tokenStorage = {
   /** AuthContext가 등록하는 콜백. 토큰 상태 변경 시 React 상태를 동기화한다. */
   onAuthChange: null as ((authenticated: boolean) => void) | null,
@@ -38,7 +35,6 @@ export const tokenStorage = {
   setTokens: (accessToken: string, refreshToken: string): void => {
     accessTokenInMemory = accessToken;
     Cookies.set(REFRESH_TOKEN_KEY, refreshToken, {
-      secure: isSecureContext,
       sameSite: "strict",
       expires: 7,
     });

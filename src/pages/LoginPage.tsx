@@ -12,7 +12,6 @@ import { useState } from "react";
 import styled from "styled-components";
 import { useNavigate, Link } from "react-router-dom";
 import { useSignIn } from "@/features/auth/hooks/useAuth";
-import { useAuth } from "@/features/auth/context/useAuth";
 import { Button, Input } from "@/shared/components";
 
 const Page = styled.div`
@@ -110,7 +109,6 @@ const ErrorMsg = styled.p`
 export default function LoginPage() {
   const navigate = useNavigate();
   const signIn = useSignIn();
-  const { markAsAuthenticated } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -121,7 +119,6 @@ export default function LoginPage() {
       { username, password },
       {
         onSuccess: () => {
-          markAsAuthenticated();
           navigate("/boards");
         },
         onError: () => {
