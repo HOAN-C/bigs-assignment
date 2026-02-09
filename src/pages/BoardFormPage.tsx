@@ -1,13 +1,22 @@
 /**
- * 게시글 수정 페이지.
+ * 게시글 작성/수정 통합 페이지.
  *
- * BoardCreatePage와 동일 구조. "Edit Post" 제목, "Save Changes" 버튼.
- * useBoard(id)로 기존 데이터를 로드하여 폼 초기값으로 설정한다.
+ * useParams의 id 유무로 생성/수정 모드를 구분한다.
+ * - 생성 모드: 빈 폼, "New Post" 제목, "Publish" 버튼
+ * - 수정 모드: 기존 데이터 로드, "Edit Post" 제목, "Save Changes" 버튼
+ *
+ * NavHeader → BackLink → FormCard 구조.
+ * 반응형 padding: Detail과 동일 패턴.
  */
-import { useState, useEffect, type FormEvent } from 'react';
-import styled from 'styled-components';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useBoard, useUpdateBoard, useBoardCategories } from '@/features/board/hooks/useBoards';
+import { useState } from "react";
+import styled from "styled-components";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  useBoard,
+  useCreateBoard,
+  useUpdateBoard,
+  useBoardCategories,
+} from "@/features/board/hooks/useBoards";
 import {
   NavHeader,
   MobileNavHeader,
@@ -17,7 +26,7 @@ import {
   Select,
   Textarea,
   FileUpload,
-} from '@/shared/components';
+} from "@/shared/components";
 
 const Page = styled.div`
   min-height: 100vh;
@@ -105,57 +114,87 @@ const LoadingState = styled.div`
   font-size: 14px;
 `;
 
-export default function BoardEditPage() {
+export default function BoardFormPage() {
   const { id } = useParams<{ id: string }>();
+  const isEdit = !!id;
   const navigate = useNavigate();
+
+  // id가 없으면 NaN → useBoard 내부의 enabled: !!id 로 요청이 비활성화된다
   const { data: board, isLoading } = useBoard(Number(id));
+  const createBoard = useCreateBoard();
   const updateBoard = useUpdateBoard();
   const { data: categories = {} } = useBoardCategories();
 
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('');
-  const [content, setContent] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState('');
+  interface FormState {
+    title: string;
+    category: string;
+    content: string;
+  }
 
-  // 기존 데이터가 로드되면 폼 초기값 설정
-  useEffect(() => {
-    if (board) {
-      setTitle(board.title);
-      setCategory(board.boardCategory);
-      setContent(board.content);
-    }
-  }, [board]);
+  const [form, setForm] = useState<FormState>({
+    title: "",
+    category: "",
+    content: "",
+  });
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState("");
+
+  const [syncedBoardId, setSyncedBoardId] = useState<number | null>(null);
+  if (isEdit && board && syncedBoardId !== board.id) {
+    setSyncedBoardId(board.id);
+    setForm({
+      title: board.title,
+      category: board.boardCategory,
+      content: board.content,
+    });
+  }
 
   const categoryOptions = Object.entries(categories).map(([value, label]) => ({
     value,
     label: label as string,
   }));
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const mutation = isEdit ? updateBoard : createBoard;
 
-    if (!id || !title.trim() || !category || !content.trim()) {
-      setError('Please fill in all required fields.');
+  const handleSubmit = () => {
+    setError("");
+
+    if (!form.title.trim() || !form.category || !form.content.trim()) {
+      setError("Please fill in all required fields.");
       return;
     }
 
-    updateBoard.mutate(
-      { id: Number(id), data: { title, content, category, ...(file ? { file } : {}) } },
-      {
-        onSuccess: () => navigate(`/boards/${id}`),
-        onError: () => setError('Failed to update post.'),
-      },
-    );
+    const payload = {
+      title: form.title,
+      content: form.content,
+      category: form.category,
+      ...(file ? { file } : {}),
+    };
+
+    if (isEdit) {
+      updateBoard.mutate(
+        { id: Number(id), data: payload },
+        {
+          onSuccess: () => navigate(`/boards/${id}`),
+          onError: () => setError("Failed to update post."),
+        },
+      );
+    } else {
+      createBoard.mutate(payload, {
+        onSuccess: () => navigate("/boards"),
+        onError: () => setError("Failed to create post."),
+      });
+    }
   };
 
-  if (isLoading) {
+  if (isEdit && isLoading) {
     return (
       <Page>
         <NavHeader />
         <MobileNavHeader />
-        <Content><LoadingState>Loading...</LoadingState></Content>
+        <Content>
+          <LoadingState>Loading...</LoadingState>
+        </Content>
       </Page>
     );
   }
@@ -167,40 +206,57 @@ export default function BoardEditPage() {
       <Content>
         <BackLink />
         <FormCard>
-          <FormTitle>Edit Post</FormTitle>
+          <FormTitle>{isEdit ? "Edit Post" : "New Post"}</FormTitle>
           <Form onSubmit={handleSubmit}>
             <Input
               label="Title"
               placeholder="Enter post title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              value={form.title}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, title: e.target.value }))
+              }
               required
             />
             <Select
               label="Category"
               options={categoryOptions}
               placeholder="All Categories"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              value={form.category}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, category: e.target.value }))
+              }
             />
             <FileUpload
               file={file}
-              existingImageUrl={board?.imageUrl}
+              existingImageUrl={isEdit ? board?.imageUrl : undefined}
               onChange={setFile}
             />
             <Textarea
               label="Content"
               placeholder="Write your post content..."
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
+              value={form.content}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, content: e.target.value }))
+              }
               required
             />
           </Form>
           {error && <ErrorMsg>{error}</ErrorMsg>}
           <Actions>
-            <Button variant="outline" onClick={() => navigate(`/boards/${id}`)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={updateBoard.isPending}>
-              {updateBoard.isPending ? 'Saving...' : 'Save Changes'}
+            <Button
+              variant="outline"
+              onClick={() => navigate(isEdit ? `/boards/${id}` : "/boards")}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={mutation.isPending}>
+              {mutation.isPending
+                ? isEdit
+                  ? "Saving..."
+                  : "Publishing..."
+                : isEdit
+                  ? "Save Changes"
+                  : "Publish"}
             </Button>
           </Actions>
         </FormCard>

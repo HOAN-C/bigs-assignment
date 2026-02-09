@@ -24,6 +24,7 @@ export interface AppTheme {
     borderDivider: string;
     destructive: string;
     error: string;
+    success: string;
     categoryNotice: string;
     categoryFree: string;
     categoryQna: string;
@@ -59,6 +60,7 @@ export const lightTheme: AppTheme = {
     borderDivider: '#F0F0F0',
     destructive: '#DC3545',
     error: '#DC3545',
+    success: '#2E7D32',
     categoryNotice: '#0D6E6E',
     categoryFree: '#3B82F6',
     categoryQna: '#E07B54',
@@ -94,6 +96,7 @@ export const darkTheme: AppTheme = {
     borderDivider: '#2A2A2A',
     destructive: '#F06070',
     error: '#F06070',
+    success: '#66BB6A',
     categoryNotice: '#14A3A3',
     categoryFree: '#60A5FA',
     categoryQna: '#F09070',

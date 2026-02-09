@@ -6,11 +6,11 @@
  *
  * 반응형: LoginPage와 동일 패턴
  */
-import { useState, type FormEvent } from 'react';
-import styled from 'styled-components';
-import { useNavigate, Link } from 'react-router-dom';
-import { useSignUp } from '@/features/auth/hooks/useAuth';
-import { Button, Input } from '@/shared/components';
+import { useState } from "react";
+import styled from "styled-components";
+import { useNavigate, Link } from "react-router-dom";
+import { useSignUp } from "@/features/auth/hooks/useAuth";
+import { Button, Input } from "@/shared/components";
 
 const Page = styled.div`
   display: flex;
@@ -104,27 +104,66 @@ const ErrorMsg = styled.p`
   text-align: center;
 `;
 
+const RuleList = styled.ul`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: -8px 0 0;
+  padding: 0;
+  list-style: none;
+`;
+
+const RuleItem = styled.li<{ $met: boolean }>`
+  font-size: 12px;
+  color: ${({ theme, $met }) =>
+    $met ? theme.colors.success : theme.colors.textTertiary};
+`;
+
 export default function SignupPage() {
   const navigate = useNavigate();
   const signUp = useSignUp();
-  const [form, setForm] = useState({ username: '', name: '', password: '', confirmPassword: '' });
-  const [error, setError] = useState('');
+  const [form, setForm] = useState({
+    username: "",
+    name: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [error, setError] = useState("");
 
   const update = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    setError('');
+  /** 이메일 형식 검증 (입력이 있을 때만 판별) */
+  const isEmailValid =
+    form.username === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.username);
 
-    if (form.password !== form.confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
+  /** 비밀번호 조건별 충족 여부 */
+  const passwordRules = {
+    length: form.password.length >= 8,
+    letter: /[A-Za-z]/.test(form.password),
+    number: /[0-9]/.test(form.password),
+    special: /[!%*#?&]/.test(form.password),
+  };
+
+  const isPasswordValid = Object.values(passwordRules).every(Boolean);
+  const isPasswordMatch =
+    form.confirmPassword === "" || form.password === form.confirmPassword;
+
+  const isFormValid =
+    form.username.trim() !== "" &&
+    isEmailValid &&
+    form.name.trim() !== "" &&
+    isPasswordValid &&
+    form.confirmPassword !== "" &&
+    form.password === form.confirmPassword;
+
+  const handleSubmit = () => {
+    if (!isFormValid) return;
+    setError("");
 
     signUp.mutate(form, {
-      onSuccess: () => navigate('/login'),
-      onError: () => setError('Sign up failed. Please try again.'),
+      onSuccess: () => navigate("/login"),
+      onError: () => setError("Sign up failed. Please try again."),
     });
   };
 
@@ -138,19 +177,22 @@ export default function SignupPage() {
           </LogoRow>
           <Subtitle>Create a new account</Subtitle>
         </Header>
-        <Form onSubmit={handleSubmit}>
+        <Form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
           <Input
             label="Username"
-            placeholder="Choose a username"
+            placeholder="youremail@email.com"
             value={form.username}
-            onChange={update('username')}
+            onChange={update("username")}
+            error={
+              !isEmailValid ? "Please enter a valid email address." : undefined
+            }
             required
           />
           <Input
             label="Name"
             placeholder="Enter your name"
             value={form.name}
-            onChange={update('name')}
+            onChange={update("name")}
             required
           />
           <Input
@@ -158,22 +200,44 @@ export default function SignupPage() {
             type="password"
             placeholder="Create a password"
             value={form.password}
-            onChange={update('password')}
+            onChange={update("password")}
             required
           />
+          {form.password && (
+            <RuleList>
+              <RuleItem $met={passwordRules.length}>
+                {passwordRules.length ? "✓" : "x"} At least 8 characters
+              </RuleItem>
+              <RuleItem $met={passwordRules.letter}>
+                {passwordRules.letter ? "✓" : "x"} Includes eng letters
+              </RuleItem>
+              <RuleItem $met={passwordRules.number}>
+                {passwordRules.number ? "✓" : "x"} Includes numbers
+              </RuleItem>
+              <RuleItem $met={passwordRules.special}>
+                {passwordRules.special ? "✓" : "x"} Includes special characters
+                (!%*#?&)
+              </RuleItem>
+            </RuleList>
+          )}
           <Input
             label="Confirm Password"
             type="password"
             placeholder="Confirm your password"
             value={form.confirmPassword}
-            onChange={update('confirmPassword')}
+            onChange={update("confirmPassword")}
+            error={!isPasswordMatch ? "Passwords do not match." : undefined}
             required
           />
         </Form>
         <Actions>
           {error && <ErrorMsg>{error}</ErrorMsg>}
-          <Button fullWidth onClick={handleSubmit} disabled={signUp.isPending}>
-            {signUp.isPending ? 'Creating...' : 'Create Account'}
+          <Button
+            fullWidth
+            onClick={handleSubmit}
+            disabled={!isFormValid || signUp.isPending}
+          >
+            {signUp.isPending ? "Creating..." : "Create Account"}
           </Button>
           <LinkRow>
             <LinkText>Already have an account?</LinkText>

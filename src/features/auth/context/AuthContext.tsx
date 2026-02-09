@@ -12,7 +12,7 @@
  * 이 변화를 React 상태에 반영하기 위해 onAuthChange 콜백을 tokenStorage에 등록한다.
  * 인증이 해제되면 자동으로 /login으로 리다이렉트한다.
  */
-import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useState, useCallback, useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { tokenStorage } from "@/shared/api";
 import { AuthContext } from "./authContextDef";
@@ -23,33 +23,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokenStorage.hasTokens(),
   );
 
-  // 이전 인증 상태를 추적하여 "로그인 → 로그아웃" 전환 시에만 리다이렉트
-  const prevAuthRef = useRef(isAuthenticated);
-
   /**
    * tokenStorage의 변경 사항을 React 상태에 동기화한다.
    * 인터셉터가 clearTokens()를 호출하면 이 콜백이 실행되어 UI가 로그아웃 상태로 전환된다.
+   *
+   * 인증 해제 시(refresh 실패, signOut 등) 즉시 /login으로 리다이렉트한다.
+   * 이전에는 true→false 전환만 감지했기 때문에, 앱 시작 시 이미 토큰이 만료된 경우
+   * (hasTokens()가 처음부터 false) 리다이렉트가 동작하지 않는 버그가 있었다.
    */
   useEffect(() => {
     tokenStorage.onAuthChange = (authenticated: boolean) => {
       setIsAuthenticated(authenticated);
+      if (!authenticated) {
+        navigate("/login", { replace: true });
+      }
     };
     return () => {
       tokenStorage.onAuthChange = null;
     };
-  }, []);
-
-  /**
-   * 인증 상태가 true → false로 변경되면 /login으로 리다이렉트한다.
-   * 인터셉터에서 refresh 실패로 clearTokens()가 호출된 경우,
-   * 또는 signOut()이 호출된 경우 모두 여기서 처리된다.
-   */
-  useEffect(() => {
-    if (prevAuthRef.current && !isAuthenticated) {
-      navigate("/login", { replace: true });
-    }
-    prevAuthRef.current = isAuthenticated;
-  }, [isAuthenticated, navigate]);
+  }, [navigate]);
 
   const markAsAuthenticated = useCallback(() => {
     setIsAuthenticated(true);

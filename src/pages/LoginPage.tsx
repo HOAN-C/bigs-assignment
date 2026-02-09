@@ -8,12 +8,12 @@
  * - 데스크톱/노트북: 카드 420px, padding 40
  * - 모바일(≤375): 카드 full-width, padding [32,24]
  */
-import { useState, type FormEvent } from 'react';
-import styled from 'styled-components';
-import { useNavigate, Link } from 'react-router-dom';
-import { useSignIn } from '@/features/auth/hooks/useAuth';
-import { useAuth } from '@/features/auth/context/useAuth';
-import { Button, Input } from '@/shared/components';
+import { useState } from "react";
+import styled from "styled-components";
+import { useNavigate, Link } from "react-router-dom";
+import { useSignIn } from "@/features/auth/hooks/useAuth";
+import { useAuth } from "@/features/auth/context/useAuth";
+import { Button, Input } from "@/shared/components";
 
 const Page = styled.div`
   display: flex;
@@ -111,22 +111,21 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const signIn = useSignIn();
   const { markAsAuthenticated } = useAuth();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const handleSubmit = () => {
+    setError("");
     signIn.mutate(
       { username, password },
       {
         onSuccess: () => {
           markAsAuthenticated();
-          navigate('/boards');
+          navigate("/boards");
         },
         onError: () => {
-          setError('Invalid username or password.');
+          setError("Invalid username or password.");
         },
       },
     );
@@ -142,7 +141,7 @@ export default function LoginPage() {
           </LogoRow>
           <Subtitle>Sign in to your account</Subtitle>
         </Header>
-        <Form onSubmit={handleSubmit}>
+        <Form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
           <Input
             label="Username"
             placeholder="Enter your username"
@@ -162,7 +161,7 @@ export default function LoginPage() {
         <Actions>
           {error && <ErrorMsg>{error}</ErrorMsg>}
           <Button fullWidth onClick={handleSubmit} disabled={signIn.isPending}>
-            {signIn.isPending ? 'Signing in...' : 'Sign In'}
+            {signIn.isPending ? "Signing in..." : "Sign In"}
           </Button>
           <LinkRow>
             <LinkText>Don't have an account?</LinkText>

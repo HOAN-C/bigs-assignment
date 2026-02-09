@@ -14,6 +14,17 @@ import { tokenStorage } from "./tokenStorage";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+/**
+ * 인증 실패 시 로그인 페이지로 강제 이동한다.
+ * React Router 외부(인터셉터)에서 호출되므로 window.location을 사용한다.
+ * 이미 로그인 페이지에 있으면 중복 이동을 방지한다.
+ */
+const redirectToLogin = () => {
+  if (window.location.pathname !== "/login") {
+    window.location.replace("/login");
+  }
+};
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
 });
@@ -85,7 +96,10 @@ apiClient.interceptors.request.use(
       try {
         accessToken = await refreshAccessToken();
       } catch {
-        // 갱신 실패 시 토큰 없이 요청 진행 (서버가 401/403으로 응답하면 응답 인터셉터가 처리)
+        // refresh 실패 → 토큰 완전 만료 → 즉시 로그인 페이지로 이동
+        tokenStorage.clearTokens();
+        redirectToLogin();
+        return Promise.reject(new Error("Authentication required"));
       }
     }
 
@@ -129,15 +143,15 @@ apiClient.interceptors.response.use(
       });
     }
 
-    // 이 요청이 첫 번째 401/403 → 토큰 갱신 시작
     originalRequest._retry = true; // 무한 루프 방지: 재시도 시 이 블록을 다시 타지 않도록
     isRefreshing = true;
 
     const refreshToken = tokenStorage.getRefreshToken();
     if (!refreshToken) {
-      // refreshToken 자체가 없으면 로그아웃 상태로 간주
+      // refreshToken 자체가 없으면 로그아웃 → 로그인 페이지로 강제 이동
       tokenStorage.clearTokens();
       isRefreshing = false;
+      redirectToLogin();
       return Promise.reject(error);
     }
 
@@ -149,9 +163,10 @@ apiClient.interceptors.response.use(
       originalRequest.headers.Authorization = `Bearer ${accessToken}`;
       return apiClient(originalRequest);
     } catch (refreshError) {
-      // 토큰 갱신 자체가 실패하면 큐의 모든 요청도 실패 처리하고 로그아웃
+      // 토큰 갱신 자체가 실패하면 큐의 모든 요청도 실패 처리하고 로그인 페이지로 이동
       processQueue(refreshError as Error, null);
       tokenStorage.clearTokens();
+      redirectToLogin();
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;
