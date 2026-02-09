@@ -6,12 +6,11 @@
  *   → accessToken이 없지만 refreshToken이 있으면 선제적으로 갱신한다 (새로고침 직후 시나리오)
  * - 응답 인터셉터: 401/403 응답 시 토큰을 자동 갱신하고 실패한 요청을 재시도
  *
- * 인증 실패 시 리다이렉트는 이 파일에서 직접 하지 않는다.
- * clearTokens() → tokenStorage.onAuthChange(false) → AuthContext의 navigate("/login")
- * 경로를 통해 React Router가 처리한다.
+ * 인증 실패 시 useAuthStore.forceSignOut()으로 토큰 삭제 + 스토어 갱신 + 리다이렉트를 직접 처리한다.
  */
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { tokenStorage } from "./tokenStorage";
+import { useAuthStore } from "@/features/auth/store/useAuthStore";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -46,6 +45,8 @@ const processQueue = (error: Error | null, token: string | null = null) => {
 /**
  * refreshToken으로 accessToken을 갱신한다.
  * 이미 갱신 중이면 기존 Promise를 반환하여 중복 호출을 방지한다.
+ *
+ * 토큰 저장만 하고, 스토어 갱신은 호출부에서 직접 처리한다.
  */
 const refreshAccessToken = (): Promise<string> => {
   if (pendingRefreshPromise) return pendingRefreshPromise;
@@ -61,6 +62,7 @@ const refreshAccessToken = (): Promise<string> => {
     .then((response) => {
       const { accessToken, refreshToken: newRefreshToken } = response.data;
       tokenStorage.setTokens(accessToken, newRefreshToken);
+      useAuthStore.getState().setAuthenticated(true);
       return accessToken;
     })
     .finally(() => {
@@ -86,8 +88,8 @@ apiClient.interceptors.request.use(
       try {
         accessToken = await refreshAccessToken();
       } catch {
-        // refresh 실패 → 토큰 완전 만료 → clearTokens가 onAuthChange를 통해 리다이렉트 처리
-        tokenStorage.clearTokens();
+        // refresh 실패 → 토큰 완전 만료 → 강제 로그아웃
+        useAuthStore.getState().forceSignOut();
         return Promise.reject(new Error("Authentication required"));
       }
     }
@@ -137,8 +139,8 @@ apiClient.interceptors.response.use(
 
     const refreshToken = tokenStorage.getRefreshToken();
     if (!refreshToken) {
-      // refreshToken 자체가 없으면 로그아웃 처리 (onAuthChange가 리다이렉트)
-      tokenStorage.clearTokens();
+      // refreshToken 자체가 없으면 강제 로그아웃
+      useAuthStore.getState().forceSignOut();
       isRefreshing = false;
       return Promise.reject(error);
     }
@@ -151,9 +153,9 @@ apiClient.interceptors.response.use(
       originalRequest.headers.Authorization = `Bearer ${accessToken}`;
       return apiClient(originalRequest);
     } catch (refreshError) {
-      // 토큰 갱신 실패 → 큐의 모든 요청도 실패 처리, onAuthChange가 리다이렉트
+      // 토큰 갱신 실패 → 큐의 모든 요청도 실패 처리, 강제 로그아웃
       processQueue(refreshError as Error, null);
-      tokenStorage.clearTokens();
+      useAuthStore.getState().forceSignOut();
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;

@@ -8,8 +8,8 @@
 import { useState } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/features/auth/context/useAuth';
-import { useThemeMode } from '../styles';
+import { useAuthStore } from '@/features/auth/store/useAuthStore';
+import { useThemeStore } from '../styles';
 
 const Header = styled.header`
   display: none;
@@ -94,8 +94,8 @@ const MenuItem = styled.button`
 export default function MobileNavHeader() {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
-  const { isAuthenticated, signOut } = useAuth();
-  const { mode, toggleTheme } = useThemeMode();
+  const { isAuthenticated, signOut } = useAuthStore();
+  const { mode, toggleTheme } = useThemeStore();
 
   const go = (path: string) => {
     setIsOpen(false);
@@ -105,7 +105,7 @@ export default function MobileNavHeader() {
   const handleSignOut = () => {
     setIsOpen(false);
     signOut();
-    // /login 리다이렉트는 AuthProvider가 처리
+    // /login 리다이렉트는 signOut() 내부에서 처리
   };
 
   return (

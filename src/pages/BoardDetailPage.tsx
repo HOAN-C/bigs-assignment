@@ -9,7 +9,7 @@
 import styled from 'styled-components';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBoard, useDeleteBoard } from '@/features/board/hooks/useBoards';
-import { useAuth } from '@/features/auth/context/useAuth';
+import { useAuthStore } from '@/features/auth/store/useAuthStore';
 import {
   NavHeader,
   MobileNavHeader,
@@ -155,7 +155,7 @@ const LoadingState = styled.div`
 export default function BoardDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuthStore();
   const { data: board, isLoading } = useBoard(Number(id));
   const deleteBoard = useDeleteBoard();
 

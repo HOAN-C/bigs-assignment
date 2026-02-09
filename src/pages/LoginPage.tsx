@@ -55,13 +55,8 @@ const LogoRow = styled.div`
   gap: 8px;
 `;
 
-const LogoIcon = styled.span`
-  font-size: 28px;
-  color: ${({ theme }) => theme.colors.accentPrimary};
-`;
-
 const Brand = styled.span`
-  font-size: 22px;
+  font-size: 38px;
   font-weight: 700;
   color: ${({ theme }) => theme.colors.textPrimary};
 `;
@@ -133,12 +128,16 @@ export default function LoginPage() {
       <Card>
         <Header>
           <LogoRow>
-            <LogoIcon>▦</LogoIcon>
-            <Brand>Board</Brand>
+            <Brand>BIGS</Brand>
           </LogoRow>
           <Subtitle>Sign in to your account</Subtitle>
         </Header>
-        <Form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+        <Form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSubmit();
+          }}
+        >
           <Input
             label="Username"
             placeholder="Enter your username"

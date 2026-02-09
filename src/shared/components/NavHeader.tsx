@@ -5,11 +5,11 @@
  * height 64, padding [0,32], border-bottom 1px.
  * 인증 상태에 따라 버튼 노출이 달라진다.
  */
-import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/features/auth/context/useAuth';
-import { useThemeMode } from '../styles';
-import Button from './Button';
+import styled from "styled-components";
+import { useNavigate } from "react-router-dom";
+import { useAuthStore } from "@/features/auth/store/useAuthStore";
+import { useThemeStore } from "../styles";
+import Button from "./Button";
 
 const Header = styled.header`
   display: flex;
@@ -39,11 +39,6 @@ const Logo = styled.span`
   color: ${({ theme }) => theme.colors.textPrimary};
 `;
 
-const LogoIcon = styled.span`
-  font-size: 20px;
-  color: ${({ theme }) => theme.colors.accentPrimary};
-`;
-
 const NavRight = styled.div`
   display: flex;
   align-items: center;
@@ -71,31 +66,36 @@ const ThemeToggle = styled.button`
 
 export default function NavHeader() {
   const navigate = useNavigate();
-  const { isAuthenticated, signOut } = useAuth();
-  const { mode, toggleTheme } = useThemeMode();
+  const { isAuthenticated, signOut } = useAuthStore();
+  const { mode, toggleTheme } = useThemeStore();
 
   const handleSignOut = () => {
     signOut();
-    // /login 리다이렉트는 AuthProvider가 처리
+    // /login 리다이렉트는 signOut() 내부에서 처리
   };
 
   return (
     <Header>
-      <NavLeft onClick={() => navigate('/boards')}>
-        <LogoIcon>▦</LogoIcon>
-        <Logo>Board</Logo>
+      <NavLeft onClick={() => navigate("/boards")}>
+        <Logo>BIGS</Logo>
       </NavLeft>
       <NavRight>
         <ThemeToggle onClick={toggleTheme} title="Toggle theme">
-          {mode === 'light' ? '🌙' : '☀️'}
+          {mode === "light" ? "🌙" : "☀️"}
         </ThemeToggle>
         {isAuthenticated ? (
           <>
-            <Button variant="primary" onClick={() => navigate('/boards/new')}>Write</Button>
-            <Button variant="outline" onClick={handleSignOut}>Sign out</Button>
+            <Button variant="primary" onClick={() => navigate("/boards/new")}>
+              Write
+            </Button>
+            <Button variant="outline" onClick={handleSignOut}>
+              Sign out
+            </Button>
           </>
         ) : (
-          <Button variant="outline" onClick={() => navigate('/login')}>Sign in</Button>
+          <Button variant="outline" onClick={() => navigate("/login")}>
+            Sign in
+          </Button>
         )}
       </NavRight>
     </Header>

@@ -72,8 +72,6 @@ npm run lint
 VITE_API_BASE_URL=https://front-mission.bigs.or.kr
 ```
 
-`VITE_` 접두사가 붙은 변수만 클라이언트 코드에서 `import.meta.env.VITE_API_BASE_URL`로 접근할 수 있다.
-
 ---
 
 ## 폴더 구조
@@ -86,11 +84,9 @@ src/
 ├── features/                       # 기능(도메인) 단위 모듈
 │   ├── auth/                       # 인증 기능
 │   │   ├── api/index.ts            #   signUp, signIn API 함수
-│   │   ├── context/
-│   │   │   ├── authContextDef.ts   #   Context 타입 정의
-│   │   │   ├── AuthContext.tsx     #   AuthProvider 컴포넌트
-│   │   │   └── useAuth.ts         #   useAuth 훅 (Context 소비)
-│   │   ├── hooks/useAuth.ts        #   useSignUp, useSignIn 뮤테이션 훅 (로그아웃은 AuthContext.signOut 사용)
+│   │   ├── store/
+│   │   │   └── useAuthStore.ts    #   Zustand 인증 상태 스토어
+│   │   ├── hooks/useAuth.ts        #   useSignUp, useSignIn 뮤테이션 훅 (로그아웃은 useAuthStore.signOut 사용)
 │   │   └── types/index.ts          #   SignUpRequest, SignInRequest 등
 │   │
 │   └── board/                      # 게시판 기능
@@ -129,15 +125,10 @@ src/
     └── styles/
         ├── theme.ts                #   Light/Dark 테마 토큰
         ├── GlobalStyle.ts          #   CSS 리셋 + 전역 스타일
-        ├── ThemeContext.tsx         #   다크모드 토글 Context
+        ├── useThemeStore.ts        #   Zustand 테마 상태 스토어
+        ├── ThemeProvider.tsx        #   styled-components ThemeProvider 래퍼
         └── styled.d.ts             #   styled-components 타입 확장
 ```
-
-### 설계 원칙
-
-- **기능 기반 폴더 구조**: `features/auth/`, `features/board/` 처럼 도메인 단위로 코드를 묶는다
-- **API와 UI 분리**: API 호출(`api/`)은 컴포넌트에서 직접 하지 않고, 커스텀 훅(`hooks/`)을 통해서만 접근한다
-- **배럴 export**: 각 폴더의 `index.ts`에서 re-export하여 import 경로를 단순화한다
 
 ---
 
@@ -153,14 +144,11 @@ src/
     {/* React Query 캐시 */}
     <BrowserRouter>
       {/* 클라이언트 라우팅 */}
-      <AuthProvider>
-        {/* 인증 상태 관리 */}
-        <ThemeModeProvider>
-          {/* 다크모드 상태 */}
-          <GlobalStyle /> {/* CSS 리셋 */}
-          <App /> {/* 라우트 정의 */}
-        </ThemeModeProvider>
-      </AuthProvider>
+      <ThemeModeProvider>
+        {/* styled-components 테마 주입 */}
+        <GlobalStyle /> {/* CSS 리셋 */}
+        <App /> {/* 라우트 정의 */}
+      </ThemeModeProvider>
     </BrowserRouter>
   </QueryClientProvider>
 </StrictMode>
@@ -168,12 +156,11 @@ src/
 
 각 Provider의 역할:
 
-| Provider              | 역할                                                         |
-| --------------------- | ------------------------------------------------------------ |
-| `QueryClientProvider` | React Query의 캐시 저장소를 앱 전체에 공유                   |
-| `BrowserRouter`       | URL 기반 클라이언트 사이드 라우팅 활성화                     |
-| `AuthProvider`        | `isAuthenticated` 상태 관리, 토큰 변경 감지 시 자동 로그아웃 |
-| `ThemeModeProvider`   | light/dark 테마 전환, localStorage에 설정 저장               |
+| Provider              | 역할                                                            |
+| --------------------- | --------------------------------------------------------------- |
+| `QueryClientProvider` | React Query의 캐시 저장소를 앱 전체에 공유                      |
+| `BrowserRouter`       | URL 기반 클라이언트 사이드 라우팅 활성화                        |
+| `ThemeModeProvider`   | Zustand 테마 스토어에서 mode를 읽어 styled-components 테마 주입 |
 
 ### 데이터 흐름 요약
 
@@ -214,14 +201,14 @@ src/
 
 // 로그인하지 않으면 /login으로 리다이렉트
 export function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
 // 이미 로그인했으면 /boards로 리다이렉트 (로그인/회원가입 페이지 재접근 방지)
 export function GuestRoute({ children }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuthStore();
   if (isAuthenticated) return <Navigate to="/boards" replace />;
   return <>{children}</>;
 }
@@ -252,16 +239,16 @@ export function GuestRoute({ children }) {
 
 ```typescript
 export const tokenStorage = {
-  // AuthContext가 등록하는 콜백. 토큰 변경 시 React 상태를 동기화한다.
-  onAuthChange: null as ((authenticated: boolean) => void) | null,
-
   getAccessToken()                              // 메모리에서 반환
   getRefreshToken()                             // 쿠키에서 반환
-  setTokens(accessToken, refreshToken)          // 둘 다 저장 + onAuthChange(true)
-  clearTokens()                                 // 둘 다 삭제 + onAuthChange(false)
+  setTokens(accessToken, refreshToken)          // 둘 다 저장 (순수 저장만)
+  clearTokens()                                 // 둘 다 삭제 (순수 삭제만)
   hasTokens(): boolean                          // refreshToken 쿠키 존재 여부
 };
 ```
+
+`tokenStorage`는 순수한 토큰 저장/삭제만 담당한다.
+인증 상태 갱신(`useAuthStore`)이나 리다이렉트는 각 호출부에서 직접 처리한다.
 
 ### 로그인 흐름
 
@@ -269,8 +256,7 @@ export const tokenStorage = {
 1. 사용자가 LoginPage에서 username/password 입력 후 "Sign In" 클릭
 2. useSignIn() 뮤테이션이 POST /auth/signin 요청
 3. 서버 응답: { accessToken, refreshToken }
-4. useSignIn의 onSuccess에서 tokenStorage.setTokens() 호출
-5. setTokens()이 onAuthChange(true)를 트리거 → AuthContext가 isAuthenticated = true로 갱신
+4. useSignIn의 onSuccess에서 tokenStorage.setTokens() + useAuthStore.setAuthenticated(true) 호출
 6. LoginPage의 onSuccess에서 navigate("/boards")로 이동
 ```
 
@@ -278,10 +264,10 @@ export const tokenStorage = {
 
 ```
 1. 사용자가 NavHeader에서 "Sign Out" 클릭
-2. AuthContext.signOut() → tokenStorage.clearTokens() 호출
-3. clearTokens()가 onAuthChange(false)를 트리거:
-   ・AuthContext가 isAuthenticated = false로 갱신
-   ・navigate("/login", { replace: true }) 실행
+2. useAuthStore.signOut() 호출:
+   ・tokenStorage.clearTokens()로 토큰 삭제
+   ・isAuthenticated = false로 갱신
+   ・window.location.replace("/login")로 리다이렉트
 ```
 
 ### 토큰 자동 갱신 흐름
@@ -291,37 +277,39 @@ export const tokenStorage = {
 2. 응답 인터셉터가 이를 감지
 3. refreshToken으로 POST /auth/refresh 호출
 4. 성공 시:
-   ・새 토큰 쌍 저장 (setTokens → onAuthChange(true))
+   ・새 토큰 쌍 저장 (setTokens + useAuthStore.setAuthenticated(true))
    ・실패했던 원래 요청을 새 토큰으로 재시도
 5. 실패 시 (refreshToken도 만료):
-   ・clearTokens() → onAuthChange(false) → navigate("/login")
+   ・useAuthStore.forceSignOut() → 토큰 삭제 + 스토어 갱신 + /login 리다이렉트
 ```
 
 ### 인증 상태 동기화 구조
 
-모든 인증 상태 변경은 `tokenStorage`를 단일 진입점으로 사용한다:
+`tokenStorage`는 순수한 토큰 저장소이고, 각 호출부에서 스토어 갱신을 직접 처리한다:
 
 ```
-tokenStorage.setTokens()  → onAuthChange(true)  → setIsAuthenticated(true)
-tokenStorage.clearTokens() → onAuthChange(false) → setIsAuthenticated(false) + navigate("/login")
+로그인 성공:    tokenStorage.setTokens() + useAuthStore.setAuthenticated(true)
+토큰 갱신 성공: tokenStorage.setTokens() + useAuthStore.setAuthenticated(true)  (인터셉터)
+로그아웃:       useAuthStore.signOut()     → 내부에서 clearTokens + 스토어 갱신 + 리다이렉트
+인증 실패:      useAuthStore.forceSignOut() → 내부에서 clearTokens + 스토어 갱신 + 리다이렉트  (인터셉터)
 ```
 
-컴포넌트에서 직접 `setIsAuthenticated`를 호출하지 않는다. `tokenStorage`의 `onAuthChange` 콜백 하나로 인터셉터·훅·UI 상태가 모두 동기화된다.
+### useAuthStore (`src/features/auth/store/useAuthStore.ts`)
 
-### AuthContext (`src/features/auth/context/AuthContext.tsx`)
-
-인증 상태를 앱 전체에서 공유하는 Context:
+Zustand 기반 인증 상태 스토어. Provider 없이 어디서든 직접 구독한다:
 
 ```typescript
-interface AuthContextValue {
-  isAuthenticated: boolean; // 현재 로그인 상태
-  signOut: () => void; // 로그아웃 (clearTokens → onAuthChange가 모두 처리)
+interface AuthState {
+  isAuthenticated: boolean;           // 현재 로그인 상태
+  setAuthenticated: (v: boolean) => void; // 인증 상태 직접 변경
+  signOut: () => void;                // 로그아웃 (토큰 삭제 + 상태 갱신 + 리다이렉트)
+  forceSignOut: () => void;           // 인터셉터용 강제 로그아웃
 }
 ```
 
 - 앱 시작 시 `tokenStorage.hasTokens()`로 초기 인증 상태 판별
-- `tokenStorage.onAuthChange` 콜백을 등록하여, 토큰 변경 시 React 상태에 즉시 반영
-- 인증 해제 시(`onAuthChange(false)`) 자동으로 `/login`으로 리다이렉트
+- 토큰 변경 시 각 호출부에서 `setAuthenticated()` / `signOut()` / `forceSignOut()`을 직접 호출
+- 인증 해제 시 `window.location.replace("/login")`으로 리다이렉트
 
 ---
 
@@ -351,7 +339,7 @@ apiClient.interceptors.request.use(async (config) => {
     try {
       accessToken = await refreshAccessToken();
     } catch {
-      // 갱신 실패 → clearTokens가 onAuthChange를 통해 리다이렉트 처리
+      // 갱신 실패 → useAuthStore.forceSignOut()이 리다이렉트 처리
       tokenStorage.clearTokens();
       return Promise.reject(new Error("Authentication required"));
     }
@@ -374,10 +362,10 @@ apiClient.interceptors.request.use(async (config) => {
 갱신 중인 요청이 이미 있는가?
 ├── YES → 이 요청을 대기 큐(failedQueue)에 추가, 갱신 완료 대기
 └── NO  → 토큰 갱신 시작
-           ├── refreshToken 없음 → clearTokens() (onAuthChange가 /login 리다이렉트)
+           ├── refreshToken 없음 → forceSignOut() (/login 리다이렉트)
            └── refreshToken 있음 → POST /auth/refresh
                 ├── 성공 → 새 토큰 저장, 대기 큐 재시도, 원래 요청 재시도
-                └── 실패 → 대기 큐 전체 실패, clearTokens() (onAuthChange가 /login 리다이렉트)
+                └── 실패 → 대기 큐 전체 실패, forceSignOut() (/login 리다이렉트)
 ```
 
 핵심 포인트:
@@ -436,10 +424,10 @@ const createFormData = (data) => {
 
 이 프로젝트는 두 가지 상태 관리 방식을 사용한다:
 
-| 종류            | 도구          | 용도                                                |
-| --------------- | ------------- | --------------------------------------------------- |
-| 서버 상태       | React Query   | API에서 가져온 데이터 (게시글 목록, 상세, 카테고리) |
-| 클라이언트 상태 | React Context | 인증 상태, 테마 모드                                |
+| 종류            | 도구        | 용도                                                |
+| --------------- | ----------- | --------------------------------------------------- |
+| 서버 상태       | React Query | API에서 가져온 데이터 (게시글 목록, 상세, 카테고리) |
+| 클라이언트 상태 | Zustand     | 인증 상태 (useAuthStore), 테마 모드 (useThemeStore) |
 
 ### React Query 설정 (`src/shared/api/queryClient.ts`)
 
@@ -643,15 +631,16 @@ interface AppTheme {
 }
 ```
 
-### 다크모드 (`src/shared/styles/ThemeContext.tsx`)
+### 다크모드 (`src/shared/styles/useThemeStore.ts`)
 
+- Zustand 스토어로 관리, Provider 불필요
 - `localStorage`에 `"theme-mode"` 키로 사용자 설정 저장
 - 저장값 없으면 OS의 `prefers-color-scheme` 설정을 따름
-- `useThemeMode()` 훅으로 `{ mode, toggleTheme }` 접근
+- `useThemeStore()` 훅으로 `{ mode, toggleTheme }` 접근
 
 ```typescript
 // 컴포넌트에서 사용 예시
-const { mode, toggleTheme } = useThemeMode();
+const { mode, toggleTheme } = useThemeStore();
 // mode: "light" | "dark"
 // toggleTheme(): light ↔ dark 전환
 ```
